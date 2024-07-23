@@ -164,6 +164,61 @@
         .toggle-label {
             margin-right: 10px;
         }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.4);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 500px;
+        }
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close:hover,
+        .close:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        .settings-button {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            font-size: 24px;
+            background: none;
+            border: none;
+            cursor: pointer;
+        }
+        .add-git-context {
+            position: fixed;
+            top: 50px;
+            right: 10px;
+            padding: 5px 10px;
+            background-color: #2980b9;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .add-git-context:hover {
+            background-color: #3498db;
+        }
     </style>
 </head>
 <body>
@@ -189,6 +244,19 @@
         <button id="implementation-button">Implementation Advice</button>
     </div>
 
+    <div id="settings-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Settings</h2>
+            <label for="git-repo-path">Git Repository Path:</label>
+            <input type="text" id="git-repo-path" placeholder="Enter the path to your Git repository">
+            <button id="save-settings">Save</button>
+        </div>
+    </div>
+
+    <button id="settings-button" class="settings-button">⚙️</button>
+    <button id="add-git-context" class="add-git-context" style="display: none;">Add Git Context</button>
+
     <script>
         const chatContainer = document.getElementById('chat-container');
         const userInput = document.getElementById('user-input');
@@ -199,17 +267,22 @@
         const questionButton = document.getElementById('question-button');
         const implementationButton = document.getElementById('implementation-button');
         const modeToggle = document.getElementById('mode-toggle');
+        const settingsButton = document.getElementById('settings-button');
+        const settingsModal = document.getElementById('settings-modal');
+        const closeButton = settingsModal.querySelector('.close');
+        const saveSettingsButton = document.getElementById('save-settings');
+        const gitRepoPathInput = document.getElementById('git-repo-path');
+        const addGitContextButton = document.getElementById('add-git-context');
 
         let conversation = [];
         let currentHtml = '';
         let currentCss = '';
         let currentJs = '';
         let projectContext = '';
+        let gitRepoContent = null;
 
         function cleanCodeBlock(code, language) {
-            // Remove language identifier and surrounding backticks
             code = code.replace(new RegExp(`\`\`\`${language}\\s*\\n?|^\`\`\`|\\s*\`\`\`$`, 'g'), '');
-            // Trim whitespace
             code = code.trim();
             return code;
         }
@@ -219,7 +292,6 @@
             messageDiv.classList.add('message');
             messageDiv.classList.add(isUser ? 'user-message' : 'bot-message');
             
-            // Process code blocks in the content
             content = content.replace(/```(\w+)?\s*([\s\S]*?)```/g, (match, language, code) => {
                 code = cleanCodeBlock(code, language);
                 return `
@@ -304,7 +376,12 @@
             if (userMessage) {
                 addMessage(userMessage, true);
                 userInput.value = '';
-                const prompt = `${projectContext}\n\nHuman: ${userMessage}\n\nAssistant: Please provide your response. If you include any code snippets, always wrap them in triple backticks (\`\`\`) for proper formatting.`;
+                let prompt = `${projectContext}\n\nHuman: ${userMessage}\n\nAssistant: Please provide your response. If you include any code snippets, always wrap them in triple backticks (\`\`\`) for proper formatting.`;
+                
+                if (gitRepoContent) {
+                    prompt = `Git Repository Content:\n${JSON.stringify(gitRepoContent, null, 2)}\n\n${prompt}`;
+                }
+                
                 const response = await generateContent(prompt);
                 addMessage(response);
             }
@@ -424,6 +501,47 @@
             const mode = modeToggle.checked ? 'Smart' : 'Quick';
             addMessage(`Switched to ${mode} mode (${getCurrentModel()})`, false);
         });
+
+        settingsButton.onclick = () => settingsModal.style.display = 'block';
+        closeButton.onclick = () => settingsModal.style.display = 'none';
+        window.onclick = (event) => {
+            if (event.target === settingsModal) {
+                settingsModal.style.display = 'none';
+            }
+        };
+
+        saveSettingsButton.onclick = async () => {
+            const repoPath = gitRepoPathInput.value.trim();
+            if (repoPath) {
+                try {
+                    const response = await fetch('/set-git-repo', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ repoPath })
+                    });
+                    const data = await response.json();
+                    alert(data.message);
+                    addGitContextButton.style.display = 'block';
+                    settingsModal.style.display = 'none';
+                } catch (error) {
+                    console.error('Error setting Git repository path:', error);
+                    alert('Error setting Git repository path');
+                }
+            }
+        };
+
+        addGitContextButton.onclick = async () => {
+            try {
+                const response = await fetch('/git-repo-content');
+                gitRepoContent = await response.json();
+                const gitContextMessage = `Git repository content added to context. Repository structure:\n${JSON.stringify(gitRepoContent, null, 2)}`;
+                addMessage(gitContextMessage, true);
+                projectContext += gitContextMessage + '\n';
+            } catch (error) {
+                console.error('Error fetching Git repository content:', error);
+                alert('Error fetching Git repository content');
+            }
+        };
 
         addMessage("Hello! I'm here to help you with your project. What would you like to do?");
     </script>
