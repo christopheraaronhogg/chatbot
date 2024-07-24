@@ -1,11 +1,10 @@
-// script.js
-
 const chatContainer = document.getElementById('chat-container');
 const userInput = document.getElementById('user-input');
 const sendButton = document.getElementById('send-button');
 const htmlButton = document.getElementById('html-button');
 const cssButton = document.getElementById('css-button');
 const jsButton = document.getElementById('js-button');
+const readmeButton = document.getElementById('readme-button');
 const questionButton = document.getElementById('question-button');
 const implementationButton = document.getElementById('implementation-button');
 const modeToggle = document.getElementById('mode-toggle');
@@ -19,6 +18,7 @@ let conversation = [];
 let currentHtml = '';
 let currentCss = '';
 let currentJs = '';
+let currentReadme = '';
 let projectContext = '';
 let uploadedFiles = [];
 
@@ -172,6 +172,20 @@ async function handleJs() {
     addMessage("```javascript\n" + currentJs + "\n```");
 }
 
+async function handleReadme() {
+    const userMessage = userInput.value.trim();
+    if (userMessage) {
+        addMessage(userMessage, true);
+    }
+    userInput.value = '';
+    const prompt = `Project context:\n${projectContext}\n\nCurrent HTML:\n${currentHtml}\n\nCurrent CSS:\n${currentCss}\n\nCurrent JavaScript:\n${currentJs}\n\nUser input: ${userMessage}\n\nPlease generate a README.md file for this project. Include sections such as project description, installation instructions, usage, features, and any other relevant information. Format the content in Markdown. Return only the README content without any additional explanation or formatting.`;
+    let newReadme = await generateContent(prompt);
+    newReadme = cleanCodeBlock(newReadme, 'markdown');
+    currentReadme = newReadme;
+    addMessage("Generated README.md:");
+    addMessage("```markdown\n" + currentReadme + "\n```");
+}
+
 async function handleQuestion() {
     const userMessage = userInput.value.trim();
     if (userMessage) {
@@ -224,6 +238,7 @@ sendButton.addEventListener('click', handleSend);
 htmlButton.addEventListener('click', handleHtml);
 cssButton.addEventListener('click', handleCss);
 jsButton.addEventListener('click', handleJs);
+readmeButton.addEventListener('click', handleReadme);
 questionButton.addEventListener('click', handleQuestion);
 implementationButton.addEventListener('click', handleImplementationAdvice);
 
