@@ -4,42 +4,79 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Project Generator Chatbot</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
     <link rel="stylesheet" href="styles.css">
+    <script src="https://kit.fontawesome.com/your-fontawesome-kit.js" crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
     <h1>Project Generator Chatbot</h1>
+    
     <div class="toggle-container">
-        <span class="toggle-label">Quick</span>
+        <span class="toggle-label">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.8956zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.3927-.6813zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z" fill="currentColor"/>
+            </svg>
+            Quick
+        </span>
         <label class="toggle-switch">
             <input type="checkbox" id="mode-toggle">
             <span class="toggle-slider"></span>
         </label>
-        <span class="toggle-label">Smart</span>
+        <span class="toggle-label">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="14" viewBox="0 0 256 176">
+                <path fill="currentColor" d="m147.487 0l70.081 175.78H256L185.919 0zM66.183 106.221l23.98-61.774l23.98 61.774zM70.07 0L0 175.78h39.18l14.33-36.914h73.308l14.328 36.914h39.179L110.255 0z"/>
+            </svg>
+            Smart
+        </span>
     </div>
-    <div id="chat-container"></div>
-    <div>
-        <input type="text" id="user-input" placeholder="Type your message here...">
-        <button id="send-button">Send</button>
+    
+    <div id="chat-container">
     </div>
-    <div id="button-container">
-        <button id="html-button">Generate HTML</button>
-        <button id="css-button">Generate CSS</button>
-        <button id="js-button">Generate JS</button>
-        <button id="readme-button">Generate README</button>
-        <button id="question-button">Ask Question</button>
-        <button id="implementation-button">Implementation Advice</button>
+    
+    <div id="files-to-add-container" style="display: none;">
+        <h4>Files to be added with next message:</h4>
+        <ul id="files-to-add-list"></ul>
+    </div>
+    
+    <div id="input-container">
+        <textarea id="user-input" rows="1" placeholder="Type your message..."></textarea>
+        <label for="file-upload" class="file-upload-label">
+            <i class="fas fa-paperclip"></i>
+            Upload
+        </label>
+        <input type="file" id="file-upload" multiple>
+        <button id="send-button">
+            <i class="fas fa-paper-plane"></i>
+            Send
+        </button>
+    </div>
+    
+    <div id="loading-spinner" class="loading-spinner" style="display: none;">
+        <div class="spinner"></div>
     </div>
 
-    <input type="file" id="file-upload" multiple>
-    <button id="upload-button">Upload Files</button>
-    <button id="add-files-context" style="display: none;">Add Files to Context</button>
+    <div id="generate-container">
+        <h3>Generate:</h3>
+        <div id="generate-buttons">
+            <button class="generate-btn" id="html-button">HTML</button>
+            <button class="generate-btn" id="css-button">CSS</button>
+            <button class="generate-btn" id="js-button">JS</button>
+            <button class="generate-btn" id="readme-button">README</button>
+            <button class="generate-btn" id="implementation-button">Implementation</button>
+        </div>
+    </div>
+
+    <button id="question-button">Ask Question</button>
+
+    <div id="file-upload-container">
+        <input type="file" id="file-upload" multiple style="display: none;">
+        <button id="upload-button">Upload Files</button>
+    </div>
 
     <div id="uploaded-files-container" style="display: none;">
         <h3>Uploaded Files:</h3>
         <div id="file-list"></div>
     </div>
-
     <script src="script.js"></script>
 </body>
 </html>

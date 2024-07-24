@@ -10,9 +10,9 @@ const implementationButton = document.getElementById('implementation-button');
 const modeToggle = document.getElementById('mode-toggle');
 const fileUpload = document.getElementById('file-upload');
 const uploadButton = document.getElementById('upload-button');
-const addFilesContextButton = document.getElementById('add-files-context');
 const uploadedFilesContainer = document.getElementById('uploaded-files-container');
 const fileList = document.getElementById('file-list');
+const loadingSpinner = document.getElementById('loading-spinner');
 
 let conversation = [];
 let currentHtml = '';
@@ -21,6 +21,7 @@ let currentJs = '';
 let currentReadme = '';
 let projectContext = '';
 let uploadedFiles = [];
+let selectedFiles = []; // New array to keep track of selected files
 
 function cleanCodeBlock(code, language) {
     code = code.replace(new RegExp(`\`\`\`${language}\\s*\\n?|^\`\`\`|\\s*\`\`\`$`, 'g'), '');
@@ -117,10 +118,19 @@ async function handleSend() {
     if (userMessage) {
         addMessage(userMessage, true);
         userInput.value = '';
-        let prompt = `${projectContext}\n\nHuman: ${userMessage}\n\nAssistant: Please provide your response. If you include any code snippets, always wrap them in triple backticks (\`\`\`) for proper formatting.`;
+        loadingSpinner.style.display = 'flex'; // Show loading spinner
+        // Include selected files in the prompt
+        let prompt = `${projectContext}\n\nHuman: ${userMessage}\n\nSelected Files: ${selectedFiles.join(', ')}\n\nAssistant: Please provide your response. If you include any code snippets, always wrap them in triple backticks (\`\`\`) for proper formatting.`;
 
-        const response = await generateContent(prompt);
-        addMessage(response);
+        try {
+            const response = await generateContent(prompt);
+            addMessage(response);
+        } catch (error) {
+            console.error('Error:', error);
+            addMessage('An error occurred while generating the response. Please try again.');
+        } finally {
+            loadingSpinner.style.display = 'none'; // Hide loading spinner
+        }
     }
 }
 
@@ -131,13 +141,18 @@ async function handleHtml() {
     }
     userInput.value = '';
     const prompt = `Project context:\n${projectContext}\n\nCurrent HTML:\n${currentHtml}\n\nUser input: ${userMessage}\n\nPlease update or generate HTML based on the project context, current HTML, and user input. If starting fresh, create a complete HTML structure for the project described. Return only the HTML code without any explanation, comments, or markdown formatting. Do not include any text outside the HTML code.`;
-    let newHtml = await generateContent(prompt);
-    newHtml = cleanCodeBlock(newHtml, 'html');
-    newHtml = newHtml.replace(/<!--[\s\S]*?-->/g, '');
-    newHtml = newHtml.replace(/^([\s\S]*?html)?\s*<!DOCTYPE html>/i, '<!DOCTYPE html>');
-    currentHtml = newHtml;
-    addMessage("Updated HTML:");
-    addMessage("```html\n" + currentHtml + "\n```");
+    loadingSpinner.style.display = 'flex';
+    try {
+        let newHtml = await generateContent(prompt);
+        newHtml = cleanCodeBlock(newHtml, 'html');
+        newHtml = newHtml.replace(/<!--[\s\S]*?-->/g, '');
+        newHtml = newHtml.replace(/^([\s\S]*?html)?\s*<!DOCTYPE html>/i, '<!DOCTYPE html>');
+        currentHtml = newHtml;
+        addMessage("Updated HTML:");
+        addMessage("```html\n" + currentHtml + "\n```");
+    } finally {
+        loadingSpinner.style.display = 'none';
+    }
 }
 
 async function handleCss() {
@@ -147,13 +162,18 @@ async function handleCss() {
     }
     userInput.value = '';
     const prompt = `Project context:\n${projectContext}\n\nCurrent CSS:\n${currentCss}\n\nUser input: ${userMessage}\n\nPlease update or generate CSS based on the project context, current CSS, and user input. If starting fresh, create complete styles for the project described. Return only the CSS code without any explanation, comments, or markdown formatting. Do not include any text outside the CSS code.`;
-    let newCss = await generateContent(prompt);
-    newCss = cleanCodeBlock(newCss, 'css');
-    newCss = newCss.replace(/\/\*[\s\S]*?\*\//g, '');
-    newCss = newCss.replace(/\/\/.*/g, '');
-    currentCss = newCss;
-    addMessage("Updated CSS:");
-    addMessage("```css\n" + currentCss + "\n```");
+    loadingSpinner.style.display = 'flex';
+    try {
+        let newCss = await generateContent(prompt);
+        newCss = cleanCodeBlock(newCss, 'css');
+        newCss = newCss.replace(/\/\*[\s\S]*?\*\//g, '');
+        newCss = newCss.replace(/\/\/.*/g, '');
+        currentCss = newCss;
+        addMessage("Updated CSS:");
+        addMessage("```css\n" + currentCss + "\n```");
+    } finally {
+        loadingSpinner.style.display = 'none';
+    }
 }
 
 async function handleJs() {
@@ -163,13 +183,18 @@ async function handleJs() {
     }
     userInput.value = '';
     const prompt = `Project context:\n${projectContext}\n\nCurrent JavaScript:\n${currentJs}\n\nUser input: ${userMessage}\n\nPlease update or generate JavaScript based on the project context, current JavaScript, and user input. If starting fresh, create complete functionality for the project described. Ensure all necessary functions and event listeners are included. Return only the JavaScript code without any explanation, comments, or markdown formatting. Do not include any text outside the JavaScript code.`;
-    let newJs = await generateContent(prompt);
-    newJs = cleanCodeBlock(newJs, 'javascript');
-    newJs = newJs.replace(/\/\*[\s\S]*?\*\//g, '');
-    newJs = newJs.replace(/\/\/.*/g, '');
-    currentJs = newJs;
-    addMessage("Updated JavaScript:");
-    addMessage("```javascript\n" + currentJs + "\n```");
+    loadingSpinner.style.display = 'flex';
+    try {
+        let newJs = await generateContent(prompt);
+        newJs = cleanCodeBlock(newJs, 'javascript');
+        newJs = newJs.replace(/\/\*[\s\S]*?\*\//g, '');
+        newJs = newJs.replace(/\/\/.*/g, '');
+        currentJs = newJs;
+        addMessage("Updated JavaScript:");
+        addMessage("```javascript\n" + currentJs + "\n```");
+    } finally {
+        loadingSpinner.style.display = 'none';
+    }
 }
 
 async function handleReadme() {
@@ -179,11 +204,16 @@ async function handleReadme() {
     }
     userInput.value = '';
     const prompt = `Project context:\n${projectContext}\n\nCurrent HTML:\n${currentHtml}\n\nCurrent CSS:\n${currentCss}\n\nCurrent JavaScript:\n${currentJs}\n\nUser input: ${userMessage}\n\nPlease generate a README.md file for this project. Include sections such as project description, installation instructions, usage, features, and any other relevant information. Format the content in Markdown. Return only the README content without any additional explanation or formatting.`;
-    let newReadme = await generateContent(prompt);
-    newReadme = cleanCodeBlock(newReadme, 'markdown');
-    currentReadme = newReadme;
-    addMessage("Generated README.md:");
-    addMessage("```markdown\n" + currentReadme + "\n```");
+    loadingSpinner.style.display = 'flex';
+    try {
+        let newReadme = await generateContent(prompt);
+        newReadme = cleanCodeBlock(newReadme, 'markdown');
+        currentReadme = newReadme;
+        addMessage("Generated README.md:");
+        addMessage("```markdown\n" + currentReadme + "\n```");
+    } finally {
+        loadingSpinner.style.display = 'none';
+    }
 }
 
 async function handleQuestion() {
@@ -201,8 +231,13 @@ User input:
 ${userMessage}
 
 Clarifying question:`;
-    const question = await generateContent(prompt);
-    addMessage(question);
+    loadingSpinner.style.display = 'flex';
+    try {
+        const question = await generateContent(prompt);
+        addMessage(question);
+    } finally {
+        loadingSpinner.style.display = 'none';
+    }
 }
 
 async function handleImplementationAdvice() {
@@ -229,9 +264,14 @@ User input:
 ${userMessage}
 Implementation advice:`;
 
-    const advice = await generateContent(prompt);
-    addMessage("Implementation Advice:");
-    addMessage(advice);
+    loadingSpinner.style.display = 'flex';
+    try {
+        const advice = await generateContent(prompt);
+        addMessage("Implementation Advice:");
+        addMessage(advice);
+    } finally {
+        loadingSpinner.style.display = 'none';
+    }
 }
 
 sendButton.addEventListener('click', handleSend);
@@ -253,49 +293,97 @@ modeToggle.addEventListener('change', () => {
     addMessage(`Switched to ${mode} mode (${getCurrentModel()})`, false);
 });
 
-uploadButton.addEventListener('click', () => {
-    const files = fileUpload.files;
+uploadButton.addEventListener('click', function() {
+    document.getElementById('file-upload').click();
+});
+
+document.getElementById('file-upload').addEventListener('change', function(event) {
+    const files = event.target.files;
     if (files.length > 0) {
-        for (let i = 0; i < files.length; i++) {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                uploadedFiles.push({
-                    name: files[i].name,
-                    content: e.target.result
-                });
-                // Create file icon and name element
-                const fileElement = document.createElement('div');
-                fileElement.innerHTML = `
-                    <i class="fas fa-file" style="margin-right: 5px;"></i>
-                    ${files[i].name}
-                `;
-                fileElement.style.margin = '5px 0';
-                fileList.appendChild(fileElement);
-                
-                if (i === files.length - 1) {
-                    uploadedFilesContainer.style.display = 'block';
-                    addFilesContextButton.style.display = 'block';
-                    addMessage(`${files.length} file(s) uploaded successfully. Click 'Add Files to Context' to include them in the conversation.`, false);
-                }
-            };
-            reader.readAsText(files[i]);
-        }
-    } else {
-        addMessage("Please select files to upload.", false);
+        handleFileUpload(files);
     }
 });
 
-addFilesContextButton.addEventListener('click', () => {
+function handleFileUpload(files) {
+    for (let i = 0; i < files.length; i++) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const fileObject = {
+                name: files[i].name,
+                content: e.target.result
+            };
+            uploadedFiles.push(fileObject);
+
+            // Create a visual representation of the file in the chat
+            const fileElement = document.createElement('div');
+            fileElement.classList.add('file-object');
+            fileElement.innerHTML = `
+                <div class="file-header">
+                    <span class="file-name">${files[i].name}</span>
+                    <button class="edit-file-button">Edit</button>
+                    <button class="add-to-chat-button">+</button>
+                </div>
+                <div class="file-edit-area" style="display: none;">
+                    <textarea class="file-edit-textarea"></textarea>
+                    <button class="save-file-button">Save</button>
+                </div>
+            `;
+
+            const editButton = fileElement.querySelector('.edit-file-button');
+            const addToChatButton = fileElement.querySelector('.add-to-chat-button');
+            const editArea = fileElement.querySelector('.file-edit-area');
+            const textArea = fileElement.querySelector('.file-edit-textarea');
+            const saveButton = fileElement.querySelector('.save-file-button');
+
+            editButton.onclick = () => {
+                // Toggle edit area visibility
+                if (editArea.style.display === 'none') {
+                    editArea.style.display = 'block';
+                    textArea.value = fileObject.content;
+                    editButton.textContent = 'Close';
+                } else {
+                    editArea.style.display = 'none';
+                    editButton.textContent = 'Edit';
+                }
+            };
+
+            saveButton.onclick = () => {
+                fileObject.content = textArea.value;
+                addMessage(`File "${files[i].name}" has been updated.`, true);
+            };
+
+            addToChatButton.onclick = () => {
+                if (!selectedFiles.includes(files[i].name)) {
+                    selectedFiles.push(files[i].name);
+                    addMessage(`File added to chat: ${files[i].name}`, true);
+                    addToChatButton.textContent = '✓';
+                } else {
+                    selectedFiles = selectedFiles.filter(file => file !== files[i].name);
+                    addMessage(`File removed from chat: ${files[i].name}`, true);
+                    addToChatButton.textContent = '+';
+                }
+            };
+
+            fileList.appendChild(fileElement);
+
+            if (i === files.length - 1) {
+                uploadedFilesContainer.style.display = 'block';
+                addMessage(`${files.length} file(s) uploaded successfully.`, false);
+                addFilesToContext();
+            }
+        };
+        reader.readAsText(files[i]);
+    }
+}
+
+function addFilesToContext() {
     if (uploadedFiles.length > 0) {
         let filesContext = "Uploaded Files:\n";
         uploadedFiles.forEach(file => {
             filesContext += `\nFile: ${file.name}\nContent:\n${file.content}\n`;
         });
         projectContext += filesContext;
-        addMessage("Uploaded files added to conversation context.", false);
-    } else {
-        addMessage("No files have been uploaded yet.", false);
     }
-});
+}
 
 addMessage("Hello! I'm here to help you with your project. What would you like to do?");
