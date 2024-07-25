@@ -21,11 +21,13 @@ let currentJs = '';
 let currentReadme = '';
 let projectContext = '';
 let uploadedFiles = [];
-let selectedFiles = []; // New array to keep track of selected files
+let selectedFiles = [];
 
 function cleanCodeBlock(code, language) {
+    console.log("Cleaning code block:", code); // Debug log
     code = code.replace(new RegExp(`\`\`\`${language}\\s*\\n?|^\`\`\`|\\s*\`\`\`$`, 'g'), '');
     code = code.trim();
+    console.log("Cleaned code block:", code); // Debug log
     return code;
 }
 
@@ -34,19 +36,107 @@ function addMessage(content, isUser = false) {
     messageDiv.classList.add('message');
     messageDiv.classList.add(isUser ? 'user-message' : 'bot-message');
 
-    content = content.replace(/```(\w+)?\s*([\s\S]*?)```/g, (match, language, code) => {
-        code = cleanCodeBlock(code, language);
-        return `
-        <div class="code-block-container">
-        <pre class="code-block"><code>${escapeHtml(code)}</code></pre>
-        <button class="copy-button" data-code="${encodeURIComponent(code)}">Copy</button>
-        </div>
-        `;
-    });
+    if (!isUser) {
+        // Apply the appropriate gradient border based on the current mode
+        if (modeToggle.checked) {
+            messageDiv.classList.add('smart-response');
+        } else {
+            messageDiv.classList.add('quick-response');
+        }
+    }
 
-    messageDiv.innerHTML = content;
+    function escapeHtml(unsafe) {
+        return unsafe
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    function detectLanguage(code) {
+        if (code.includes('<!DOCTYPE html') || code.includes('<html')) return 'html';
+        if (code.includes('body {') || code.includes('@media')) return 'css';
+        if (code.includes('function') || code.includes('const') || code.includes('let') || code.includes('var')) return 'javascript';
+        if (code.includes('def ') || code.includes('import ') || code.includes('class ')) return 'python';
+        return 'plaintext';
+    }
+
+    function processCodeBlock(code, lang) {
+        const escapedCode = escapeHtml(code);
+        return `<div class="code-block-container"><pre><code class="language-${lang}">${escapedCode}</code></pre><button class="copy-button" data-code="${encodeURIComponent(code)}">Copy</button></div>`;
+    }
+
+    let processedContent = '';
+    const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
+    let lastIndex = 0;
+    let match;
+
+    if (isUser) {
+        // For user messages, we'll do our original code detection
+        const lines = content.split('\n');
+        let isInCodeBlock = false;
+        let currentCodeBlock = '';
+        let currentLanguage = '';
+
+        lines.forEach((line, index) => {
+            if (line.trim().startsWith('```')) {
+                if (isInCodeBlock) {
+                    // End of code block
+                    processedContent += processCodeBlock(currentCodeBlock, currentLanguage);
+                    isInCodeBlock = false;
+                    currentCodeBlock = '';
+                    currentLanguage = '';
+                } else {
+                    // Start of code block
+                    isInCodeBlock = true;
+                    currentLanguage = line.trim().slice(3) || 'plaintext';
+                }
+            } else if (isInCodeBlock) {
+                currentCodeBlock += line + '\n';
+            } else if (lines.length > 10 && index === 0 && !line.startsWith('```')) {
+                // Auto-detect large code blocks for user messages
+                isInCodeBlock = true;
+                currentLanguage = detectLanguage(content);
+                currentCodeBlock += line + '\n';
+            } else {
+                processedContent += escapeHtml(line) + '<br>';
+            }
+        });
+
+        // Handle any remaining code block
+        if (currentCodeBlock) {
+            processedContent += processCodeBlock(currentCodeBlock, currentLanguage || detectLanguage(currentCodeBlock));
+        }
+    } else {
+        // For bot messages, we'll only process explicit code blocks
+        while ((match = codeBlockRegex.exec(content)) !== null) {
+            // Add text before the code block
+            processedContent += escapeHtml(content.slice(lastIndex, match.index)).replace(/\n/g, '<br>');
+
+            // Process the code block
+            const lang = match[1] || 'plaintext';
+            const code = match[2];
+            processedContent += processCodeBlock(code, lang);
+
+            lastIndex = codeBlockRegex.lastIndex;
+        }
+
+        // Add any remaining text after the last code block
+        processedContent += escapeHtml(content.slice(lastIndex)).replace(/\n/g, '<br>');
+    }
+
+    console.log("Processed content:", processedContent); // Debug log
+
+    messageDiv.innerHTML = processedContent;
+
     chatContainer.appendChild(messageDiv);
     chatContainer.scrollTop = chatContainer.scrollHeight;
+
+    // Apply syntax highlighting
+    messageDiv.querySelectorAll('pre code').forEach((block) => {
+        hljs.highlightElement(block);
+    });
 
     messageDiv.querySelectorAll('.copy-button').forEach(button => {
         button.addEventListener('click', handleCopyClick);
@@ -60,8 +150,18 @@ function addMessage(content, isUser = false) {
     projectContext += `${isUser ? 'User' : 'Assistant'}: ${content}\n`;
 }
 
+function escapeHtml(unsafe) {
+    return unsafe
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
 function handleCopyClick(e) {
-    const code = decodeURIComponent(e.target.getAttribute('data-code'));
+    const code = decodeURIComponent(e.target.getAttribute('data-code'))
+                 .replace(/{{BACKTICK}}/g, '`');  // Replace placeholders with backticks
     navigator.clipboard.writeText(code).then(() => {
         const originalText = e.target.textContent;
         e.target.textContent = 'Copied!';
@@ -118,8 +218,7 @@ async function handleSend() {
     if (userMessage) {
         addMessage(userMessage, true);
         userInput.value = '';
-        loadingSpinner.style.display = 'flex'; // Show loading spinner
-        // Include selected files in the prompt
+        loadingSpinner.style.display = 'flex';
         let prompt = `${projectContext}\n\nHuman: ${userMessage}\n\nSelected Files: ${selectedFiles.join(', ')}\n\nAssistant: Please provide your response. If you include any code snippets, always wrap them in triple backticks (\`\`\`) for proper formatting.`;
 
         try {
@@ -129,7 +228,7 @@ async function handleSend() {
             console.error('Error:', error);
             addMessage('An error occurred while generating the response. Please try again.');
         } finally {
-            loadingSpinner.style.display = 'none'; // Hide loading spinner
+            loadingSpinner.style.display = 'none';
         }
     }
 }
@@ -274,6 +373,72 @@ Implementation advice:`;
     }
 }
 
+function handleFileUpload(files) {
+    for (let i = 0; i < files.length; i++) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const fileObject = {
+                name: files[i].name,
+                content: e.target.result
+            };
+            uploadedFiles.push(fileObject);
+
+            const fileElement = document.createElement('div');
+            fileElement.classList.add('file-object');
+            fileElement.innerHTML = `
+                <div class="file-header">
+                    <span class="file-name">${escapeHtml(files[i].name)}</span>
+                    <button class="edit-file-button">Edit</button>
+                    <button class="add-to-chat-button">+</button>
+                </div>
+                <div class="file-edit-area" style="display: none;">
+                    <textarea class="file-edit-textarea"></textarea>
+                    <button class="save-file-button">Save</button>
+                </div>
+            `;
+
+            // ... rest of the function remains the same
+
+            if (i === files.length - 1) {
+                uploadedFilesContainer.style.display = 'block';
+                addMessage(`${files.length} file(s) uploaded successfully.`, false);
+                addFilesToContext();
+            }
+        };
+        reader.readAsText(files[i]);
+    }
+}
+
+function addFilesToContext() {
+    if (uploadedFiles.length > 0) {
+        let filesContext = "Uploaded Files:\n";
+        uploadedFiles.forEach(file => {
+            filesContext += `\nFile: ${file.name}\nContent:\n\`\`\`\n${file.content}\n\`\`\`\n`;
+        });
+        projectContext += filesContext;
+    }
+}
+
+function initThemeToggle() {
+    const themeToggle = document.getElementById('theme-toggle');
+    
+    // Check for saved theme preference or default to light mode
+    if (localStorage.getItem('dark-mode') === 'true') {
+        document.body.classList.add('dark-mode');
+        themeToggle.checked = true;
+    }
+
+    themeToggle.addEventListener('change', function() {
+        if (this.checked) {
+            document.body.classList.add('dark-mode');
+            localStorage.setItem('dark-mode', 'true');
+        } else {
+            document.body.classList.remove('dark-mode');
+            localStorage.setItem('dark-mode', 'false');
+        }
+    });
+}
+
 sendButton.addEventListener('click', handleSend);
 htmlButton.addEventListener('click', handleHtml);
 cssButton.addEventListener('click', handleCss);
@@ -304,86 +469,15 @@ document.getElementById('file-upload').addEventListener('change', function(event
     }
 });
 
-function handleFileUpload(files) {
-    for (let i = 0; i < files.length; i++) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const fileObject = {
-                name: files[i].name,
-                content: e.target.result
-            };
-            uploadedFiles.push(fileObject);
-
-            // Create a visual representation of the file in the chat
-            const fileElement = document.createElement('div');
-            fileElement.classList.add('file-object');
-            fileElement.innerHTML = `
-                <div class="file-header">
-                    <span class="file-name">${files[i].name}</span>
-                    <button class="edit-file-button">Edit</button>
-                    <button class="add-to-chat-button">+</button>
-                </div>
-                <div class="file-edit-area" style="display: none;">
-                    <textarea class="file-edit-textarea"></textarea>
-                    <button class="save-file-button">Save</button>
-                </div>
-            `;
-
-            const editButton = fileElement.querySelector('.edit-file-button');
-            const addToChatButton = fileElement.querySelector('.add-to-chat-button');
-            const editArea = fileElement.querySelector('.file-edit-area');
-            const textArea = fileElement.querySelector('.file-edit-textarea');
-            const saveButton = fileElement.querySelector('.save-file-button');
-
-            editButton.onclick = () => {
-                // Toggle edit area visibility
-                if (editArea.style.display === 'none') {
-                    editArea.style.display = 'block';
-                    textArea.value = fileObject.content;
-                    editButton.textContent = 'Close';
-                } else {
-                    editArea.style.display = 'none';
-                    editButton.textContent = 'Edit';
-                }
-            };
-
-            saveButton.onclick = () => {
-                fileObject.content = textArea.value;
-                addMessage(`File "${files[i].name}" has been updated.`, true);
-            };
-
-            addToChatButton.onclick = () => {
-                if (!selectedFiles.includes(files[i].name)) {
-                    selectedFiles.push(files[i].name);
-                    addMessage(`File added to chat: ${files[i].name}`, true);
-                    addToChatButton.textContent = '✓';
-                } else {
-                    selectedFiles = selectedFiles.filter(file => file !== files[i].name);
-                    addMessage(`File removed from chat: ${files[i].name}`, true);
-                    addToChatButton.textContent = '+';
-                }
-            };
-
-            fileList.appendChild(fileElement);
-
-            if (i === files.length - 1) {
-                uploadedFilesContainer.style.display = 'block';
-                addMessage(`${files.length} file(s) uploaded successfully.`, false);
-                addFilesToContext();
-            }
-        };
-        reader.readAsText(files[i]);
-    }
-}
-
-function addFilesToContext() {
-    if (uploadedFiles.length > 0) {
-        let filesContext = "Uploaded Files:\n";
-        uploadedFiles.forEach(file => {
-            filesContext += `\nFile: ${file.name}\nContent:\n${file.content}\n`;
-        });
-        projectContext += filesContext;
-    }
-}
-
+// Initialize the chat
 addMessage("Hello! I'm here to help you with your project. What would you like to do?");
+
+// Initialize theme toggle
+document.addEventListener('DOMContentLoaded', initThemeToggle);
+
+// Initialize highlight.js
+document.addEventListener('DOMContentLoaded', (event) => {
+    document.querySelectorAll('pre code').forEach((block) => {
+        hljs.highlightElement(block);
+    });
+});

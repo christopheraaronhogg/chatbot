@@ -9,16 +9,9 @@
 # .gitignore
 
 ```
-# Ignore .env file
 .env
-
-# Ignore node_modules
 node_modules/
-
-# Ignore log files
 *.log
-
-# Ignore any other sensitive or unnecessary files
 config.js
 secrets.json
 ```
@@ -132,6 +125,8 @@ packageCodebase(rootDirectory, outputFilePath).catch(console.error);
     <title>Project Generator Chatbot</title>
     <link rel="stylesheet" href="styles.css">
     <script src="https://kit.fontawesome.com/0b3c182226.js" crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/atom-one-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
 </head>
 <body>
     <header>
@@ -146,6 +141,14 @@ packageCodebase(rootDirectory, outputFilePath).catch(console.error);
                     <span class="toggle-slider"></span>
                 </label>
                 <span class="toggle-label"><i class="fas fa-brain"></i> Smart</span>
+            </div>
+            <div class="toggle-container">
+                <span class="toggle-label"><i class="fas fa-sun"></i> Light</span>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="theme-toggle">
+                    <span class="toggle-slider"></span>
+                </label>
+                <span class="toggle-label"><i class="fas fa-moon"></i> Dark</span>
             </div>
         </section>
 
@@ -169,12 +172,12 @@ packageCodebase(rootDirectory, outputFilePath).catch(console.error);
         </section>
 
         <button id="question-button"><i class="fas fa-question-circle"></i> Ask Question</button>
+        <label for="file-upload" class="file-upload-label">
+            <i class="fas fa-cloud-upload-alt"></i> Add Files
+        </label>
 
         <section id="file-upload-section">
             <div id="file-upload-container">
-                <label for="file-upload" class="file-upload-label">
-                    <i class="fas fa-cloud-upload-alt"></i> Choose Files
-                </label>
                 <input type="file" id="file-upload" multiple>
                 <button id="upload-button"><i class="fas fa-upload"></i> Upload</button>
             </div>
@@ -195,6 +198,9 @@ packageCodebase(rootDirectory, outputFilePath).catch(console.error);
         <div class="spinner"></div>
     </div>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/languages/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/languages/css.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/languages/html.min.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
@@ -226,11 +232,13 @@ let currentJs = '';
 let currentReadme = '';
 let projectContext = '';
 let uploadedFiles = [];
-let selectedFiles = []; // New array to keep track of selected files
+let selectedFiles = [];
 
 function cleanCodeBlock(code, language) {
+    console.log("Cleaning code block:", code); // Debug log
     code = code.replace(new RegExp(`\`\`\`${language}\\s*\\n?|^\`\`\`|\\s*\`\`\`$`, 'g'), '');
     code = code.trim();
+    console.log("Cleaned code block:", code); // Debug log
     return code;
 }
 
@@ -239,19 +247,107 @@ function addMessage(content, isUser = false) {
     messageDiv.classList.add('message');
     messageDiv.classList.add(isUser ? 'user-message' : 'bot-message');
 
-    content = content.replace(/```(\w+)?\s*([\s\S]*?)```/g, (match, language, code) => {
-        code = cleanCodeBlock(code, language);
-        return `
-        <div class="code-block-container">
-        <pre class="code-block"><code>${escapeHtml(code)}</code></pre>
-        <button class="copy-button" data-code="${encodeURIComponent(code)}">Copy</button>
-        </div>
-        `;
-    });
+    if (!isUser) {
+        // Apply the appropriate gradient border based on the current mode
+        if (modeToggle.checked) {
+            messageDiv.classList.add('smart-response');
+        } else {
+            messageDiv.classList.add('quick-response');
+        }
+    }
 
-    messageDiv.innerHTML = content;
+    function escapeHtml(unsafe) {
+        return unsafe
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    function detectLanguage(code) {
+        if (code.includes('<!DOCTYPE html') || code.includes('<html')) return 'html';
+        if (code.includes('body {') || code.includes('@media')) return 'css';
+        if (code.includes('function') || code.includes('const') || code.includes('let') || code.includes('var')) return 'javascript';
+        if (code.includes('def ') || code.includes('import ') || code.includes('class ')) return 'python';
+        return 'plaintext';
+    }
+
+    function processCodeBlock(code, lang) {
+        const escapedCode = escapeHtml(code);
+        return `<div class="code-block-container"><pre><code class="language-${lang}">${escapedCode}</code></pre><button class="copy-button" data-code="${encodeURIComponent(code)}">Copy</button></div>`;
+    }
+
+    let processedContent = '';
+    const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
+    let lastIndex = 0;
+    let match;
+
+    if (isUser) {
+        // For user messages, we'll do our original code detection
+        const lines = content.split('\n');
+        let isInCodeBlock = false;
+        let currentCodeBlock = '';
+        let currentLanguage = '';
+
+        lines.forEach((line, index) => {
+            if (line.trim().startsWith('```')) {
+                if (isInCodeBlock) {
+                    // End of code block
+                    processedContent += processCodeBlock(currentCodeBlock, currentLanguage);
+                    isInCodeBlock = false;
+                    currentCodeBlock = '';
+                    currentLanguage = '';
+                } else {
+                    // Start of code block
+                    isInCodeBlock = true;
+                    currentLanguage = line.trim().slice(3) || 'plaintext';
+                }
+            } else if (isInCodeBlock) {
+                currentCodeBlock += line + '\n';
+            } else if (lines.length > 10 && index === 0 && !line.startsWith('```')) {
+                // Auto-detect large code blocks for user messages
+                isInCodeBlock = true;
+                currentLanguage = detectLanguage(content);
+                currentCodeBlock += line + '\n';
+            } else {
+                processedContent += escapeHtml(line) + '<br>';
+            }
+        });
+
+        // Handle any remaining code block
+        if (currentCodeBlock) {
+            processedContent += processCodeBlock(currentCodeBlock, currentLanguage || detectLanguage(currentCodeBlock));
+        }
+    } else {
+        // For bot messages, we'll only process explicit code blocks
+        while ((match = codeBlockRegex.exec(content)) !== null) {
+            // Add text before the code block
+            processedContent += escapeHtml(content.slice(lastIndex, match.index)).replace(/\n/g, '<br>');
+
+            // Process the code block
+            const lang = match[1] || 'plaintext';
+            const code = match[2];
+            processedContent += processCodeBlock(code, lang);
+
+            lastIndex = codeBlockRegex.lastIndex;
+        }
+
+        // Add any remaining text after the last code block
+        processedContent += escapeHtml(content.slice(lastIndex)).replace(/\n/g, '<br>');
+    }
+
+    console.log("Processed content:", processedContent); // Debug log
+
+    messageDiv.innerHTML = processedContent;
+
     chatContainer.appendChild(messageDiv);
     chatContainer.scrollTop = chatContainer.scrollHeight;
+
+    // Apply syntax highlighting
+    messageDiv.querySelectorAll('pre code').forEach((block) => {
+        hljs.highlightElement(block);
+    });
 
     messageDiv.querySelectorAll('.copy-button').forEach(button => {
         button.addEventListener('click', handleCopyClick);
@@ -265,8 +361,18 @@ function addMessage(content, isUser = false) {
     projectContext += `${isUser ? 'User' : 'Assistant'}: ${content}\n`;
 }
 
+function escapeHtml(unsafe) {
+    return unsafe
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
 function handleCopyClick(e) {
-    const code = decodeURIComponent(e.target.getAttribute('data-code'));
+    const code = decodeURIComponent(e.target.getAttribute('data-code'))
+                 .replace(/{{BACKTICK}}/g, '`');  // Replace placeholders with backticks
     navigator.clipboard.writeText(code).then(() => {
         const originalText = e.target.textContent;
         e.target.textContent = 'Copied!';
@@ -323,8 +429,7 @@ async function handleSend() {
     if (userMessage) {
         addMessage(userMessage, true);
         userInput.value = '';
-        loadingSpinner.style.display = 'flex'; // Show loading spinner
-        // Include selected files in the prompt
+        loadingSpinner.style.display = 'flex';
         let prompt = `${projectContext}\n\nHuman: ${userMessage}\n\nSelected Files: ${selectedFiles.join(', ')}\n\nAssistant: Please provide your response. If you include any code snippets, always wrap them in triple backticks (\`\`\`) for proper formatting.`;
 
         try {
@@ -334,7 +439,7 @@ async function handleSend() {
             console.error('Error:', error);
             addMessage('An error occurred while generating the response. Please try again.');
         } finally {
-            loadingSpinner.style.display = 'none'; // Hide loading spinner
+            loadingSpinner.style.display = 'none';
         }
     }
 }
@@ -479,6 +584,72 @@ Implementation advice:`;
     }
 }
 
+function handleFileUpload(files) {
+    for (let i = 0; i < files.length; i++) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const fileObject = {
+                name: files[i].name,
+                content: e.target.result
+            };
+            uploadedFiles.push(fileObject);
+
+            const fileElement = document.createElement('div');
+            fileElement.classList.add('file-object');
+            fileElement.innerHTML = `
+                <div class="file-header">
+                    <span class="file-name">${escapeHtml(files[i].name)}</span>
+                    <button class="edit-file-button">Edit</button>
+                    <button class="add-to-chat-button">+</button>
+                </div>
+                <div class="file-edit-area" style="display: none;">
+                    <textarea class="file-edit-textarea"></textarea>
+                    <button class="save-file-button">Save</button>
+                </div>
+            `;
+
+            // ... rest of the function remains the same
+
+            if (i === files.length - 1) {
+                uploadedFilesContainer.style.display = 'block';
+                addMessage(`${files.length} file(s) uploaded successfully.`, false);
+                addFilesToContext();
+            }
+        };
+        reader.readAsText(files[i]);
+    }
+}
+
+function addFilesToContext() {
+    if (uploadedFiles.length > 0) {
+        let filesContext = "Uploaded Files:\n";
+        uploadedFiles.forEach(file => {
+            filesContext += `\nFile: ${file.name}\nContent:\n\`\`\`\n${file.content}\n\`\`\`\n`;
+        });
+        projectContext += filesContext;
+    }
+}
+
+function initThemeToggle() {
+    const themeToggle = document.getElementById('theme-toggle');
+    
+    // Check for saved theme preference or default to light mode
+    if (localStorage.getItem('dark-mode') === 'true') {
+        document.body.classList.add('dark-mode');
+        themeToggle.checked = true;
+    }
+
+    themeToggle.addEventListener('change', function() {
+        if (this.checked) {
+            document.body.classList.add('dark-mode');
+            localStorage.setItem('dark-mode', 'true');
+        } else {
+            document.body.classList.remove('dark-mode');
+            localStorage.setItem('dark-mode', 'false');
+        }
+    });
+}
+
 sendButton.addEventListener('click', handleSend);
 htmlButton.addEventListener('click', handleHtml);
 cssButton.addEventListener('click', handleCss);
@@ -509,89 +680,18 @@ document.getElementById('file-upload').addEventListener('change', function(event
     }
 });
 
-function handleFileUpload(files) {
-    for (let i = 0; i < files.length; i++) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const fileObject = {
-                name: files[i].name,
-                content: e.target.result
-            };
-            uploadedFiles.push(fileObject);
-
-            // Create a visual representation of the file in the chat
-            const fileElement = document.createElement('div');
-            fileElement.classList.add('file-object');
-            fileElement.innerHTML = `
-                <div class="file-header">
-                    <span class="file-name">${files[i].name}</span>
-                    <button class="edit-file-button">Edit</button>
-                    <button class="add-to-chat-button">+</button>
-                </div>
-                <div class="file-edit-area" style="display: none;">
-                    <textarea class="file-edit-textarea"></textarea>
-                    <button class="save-file-button">Save</button>
-                </div>
-            `;
-
-            const editButton = fileElement.querySelector('.edit-file-button');
-            const addToChatButton = fileElement.querySelector('.add-to-chat-button');
-            const editArea = fileElement.querySelector('.file-edit-area');
-            const textArea = fileElement.querySelector('.file-edit-textarea');
-            const saveButton = fileElement.querySelector('.save-file-button');
-
-            editButton.onclick = () => {
-                // Toggle edit area visibility
-                if (editArea.style.display === 'none') {
-                    editArea.style.display = 'block';
-                    textArea.value = fileObject.content;
-                    editButton.textContent = 'Close';
-                } else {
-                    editArea.style.display = 'none';
-                    editButton.textContent = 'Edit';
-                }
-            };
-
-            saveButton.onclick = () => {
-                fileObject.content = textArea.value;
-                addMessage(`File "${files[i].name}" has been updated.`, true);
-            };
-
-            addToChatButton.onclick = () => {
-                if (!selectedFiles.includes(files[i].name)) {
-                    selectedFiles.push(files[i].name);
-                    addMessage(`File added to chat: ${files[i].name}`, true);
-                    addToChatButton.textContent = '✓';
-                } else {
-                    selectedFiles = selectedFiles.filter(file => file !== files[i].name);
-                    addMessage(`File removed from chat: ${files[i].name}`, true);
-                    addToChatButton.textContent = '+';
-                }
-            };
-
-            fileList.appendChild(fileElement);
-
-            if (i === files.length - 1) {
-                uploadedFilesContainer.style.display = 'block';
-                addMessage(`${files.length} file(s) uploaded successfully.`, false);
-                addFilesToContext();
-            }
-        };
-        reader.readAsText(files[i]);
-    }
-}
-
-function addFilesToContext() {
-    if (uploadedFiles.length > 0) {
-        let filesContext = "Uploaded Files:\n";
-        uploadedFiles.forEach(file => {
-            filesContext += `\nFile: ${file.name}\nContent:\n${file.content}\n`;
-        });
-        projectContext += filesContext;
-    }
-}
-
+// Initialize the chat
 addMessage("Hello! I'm here to help you with your project. What would you like to do?");
+
+// Initialize theme toggle
+document.addEventListener('DOMContentLoaded', initThemeToggle);
+
+// Initialize highlight.js
+document.addEventListener('DOMContentLoaded', (event) => {
+    document.querySelectorAll('pre code').forEach((block) => {
+        hljs.highlightElement(block);
+    });
+});
 ```
 
 # public\styles.css
@@ -609,7 +709,7 @@ body {
 }
 
 h1 {
-    color: #2c3e50;
+    color: #818d99;
     margin-bottom: 30px;
     text-align: center;
     font-size: 2.5em;
@@ -621,7 +721,7 @@ h1 {
     background-color: #fff;
     border: none;
     border-radius: 12px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
     height: 500px;
     margin-bottom: 20px;
     overflow-y: auto;
@@ -635,19 +735,49 @@ h1 {
     padding: 12px 16px;
     font-size: 0.95em;
     line-height: 1.4;
+    position: relative;
 }
 
 .user-message {
-    background-color: #3498db;
+    background-color: #4dabf7;
     color: white;
     margin-left: auto;
-    box-shadow: 2px 2px 10px rgba(52, 152, 219, 0.3);
 }
 
 .bot-message {
-    background-color: #f1f3f5;
     color: #34495e;
-    box-shadow: 2px 2px 10px rgba(52, 73, 94, 0.1);
+    background-color: #f1f3f5;
+    border-radius: 21px;
+    position: relative;
+    z-index: 0;
+}
+
+.bot-message::before {
+    content: '';
+    position: absolute;
+    top: -3px;
+    left: -3px;
+    right: -3px;
+    bottom: -3px;
+    background: linear-gradient(to right, #ff7e5f, #feb47b);
+    border-radius: 24px;
+    z-index: -1;
+}
+
+.bot-message::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: #f1f3f5;
+    border-radius: 21px;
+    z-index: -1;
+}
+
+.bot-message.smart-response::before {
+    background: linear-gradient(to right, #74c0fc, #339af0);
 }
 
 /* Input and Buttons */
@@ -677,34 +807,28 @@ h1 {
 }
 
 button {
-    background-color: #3498db;
+    background-color: #4dabf7;
     border: none;
-    border-radius: 8px;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    border-radius: 20px;
     color: white;
     cursor: pointer;
     font-weight: 600;
     letter-spacing: 0.5px;
     margin: 5px;
-    padding: 12px 18px;
+    padding: 10px 20px;
     text-transform: uppercase;
     transition: all 0.3s ease;
     font-size: 0.9em;
+    box-shadow: none;
 }
 
 button:hover {
-    background-color: #2980b9;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    background-color: #339af0;
     transform: translateY(-2px);
 }
 
-#send-button {
-    background-color: #e74c3c;
-    width: 110px;
-}
-
 #send-button:hover {
-    background-color: #c0392b;
+    background-color: #ff7e5f;
 }
 
 /* Generate Container */
@@ -734,7 +858,7 @@ button:hover {
 }
 
 .generate-btn {
-    background-color: #3498db;
+    background-color: #4dabf7;
     border: none;
     color: white;
     cursor: pointer;
@@ -743,18 +867,18 @@ button:hover {
     min-width: 80px;
     padding: 10px 14px;
     transition: all 0.3s ease;
-    border-radius: 6px;
+    border-radius: 20px;
 }
 
 .generate-btn:hover {
-    background-color: #2980b9;
+    background-color: #339af0;
     transform: translateY(-2px);
 }
 
 /* Code Blocks */
 pre, .code-block {
-    background-color: #f8f9fa;
-    border: 1px solid #e9ecef;
+    background-color: #f4f4f4;
+    border: 1px solid #ddd;
     border-radius: 8px;
     font-family: 'Fira Code', Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
     font-size: 14px;
@@ -762,21 +886,52 @@ pre, .code-block {
     margin: 15px 0;
     overflow-x: auto;
     padding: 20px;
+    position: relative;
+}
+
+.code-block-container {
+    background-color: #f4f4f4;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin: 10px 0;
+}
+
+.code-block-container pre {
+    margin: 0;
+    padding: 10px;
+    padding-right: 40px;
+}
+
+.code-block-container code {
+    display: block;
     white-space: pre-wrap;
     word-wrap: break-word;
 }
 
-pre {
-    max-height: 300px;
-    overflow-y: auto;
+.code-block {
+    counter-reset: line;
+    white-space: pre;
 }
 
-.code-block-container {
-    position: relative;
+.code-block code {
+    display: block;
+    padding-left: 4em;
+}
+
+.code-block code::before {
+    content: counter(line);
+    counter-increment: line;
+    position: absolute;
+    left: 0;
+    width: 3em;
+    text-align: right;
+    color: #606366;
+    padding-right: 1em;
+    border-right: 1px solid #404040;
 }
 
 .copy-button {
-    background-color: #2980b9;
+    background-color: #4dabf7;
     border: none;
     border-radius: 4px;
     color: white;
@@ -791,7 +946,7 @@ pre {
 }
 
 .copy-button:hover {
-    background-color: #3498db;
+    background-color: #339af0;
     opacity: 1;
 }
 
@@ -800,7 +955,7 @@ pre {
     align-items: center;
     background-color: #f8f9fa;
     border-radius: 12px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
     display: flex;
     justify-content: center;
     margin-bottom: 20px;
@@ -845,7 +1000,7 @@ pre {
 }
 
 input:checked + .toggle-slider {
-    background: linear-gradient(to right, #6dd5ed, #2193b0);
+    background: linear-gradient(to right, #74c0fc, #339af0);
 }
 
 input:checked + .toggle-slider:before {
@@ -859,7 +1014,7 @@ input:checked + .toggle-slider:before {
 }
 
 #mode-label {
-    color: #3498db;
+    color: #4dabf7;
     font-weight: 600;
     margin-left: 10px;
 }
@@ -876,15 +1031,15 @@ input:checked + .toggle-slider:before {
 }
 
 .file-upload-label {
-    background-color: #34495e;
-    border-radius: 8px;
+    background-color: #4dabf7;
+    border-radius: 30px;
     color: white;
     cursor: pointer;
     display: inline-block;
     font-weight: 600;
     letter-spacing: 0.5px;
     margin-right: 10px;
-    padding: 12px 18px;
+    padding: 7px 18px;
     text-transform: uppercase;
     transition: all 0.3s ease;
 }
@@ -950,12 +1105,12 @@ input:checked + .toggle-slider:before {
 
 /* Question Button */
 #question-button {
-    background-color: #f39c12;
+    background-color: #ff7e5f;
     margin-top: 20px;
 }
 
 #question-button:hover {
-    background-color: #d35400;
+    background-color: #e4532f;
 }
 
 /* Loading Spinner */
@@ -979,7 +1134,7 @@ input:checked + .toggle-slider:before {
     animation: spin 1s linear infinite;
     border: 6px solid #f3f3f3;
     border-radius: 50%;
-    border-top: 6px solid #3498db;
+    border-top: 6px solid #4dabf7;
     height: 60px;
     width: 60px;
 }
@@ -1004,6 +1159,106 @@ input:checked + .toggle-slider:before {
 .file-item.selected {
     background-color: #d9edf7;
     border-left: 5px solid #5bc0de;
+}
+
+/* Dark mode styles */
+body.dark-mode {
+    background-color: #1e1e1e;
+    color: #f0f0f0;
+}
+
+body.dark-mode #chat-container {
+    background-color: #2d2d2d;
+    box-shadow: 0 1px 3px rgba(255,255,255,0.1), 0 1px 2px rgba(255,255,255,0.14);
+}
+
+body.dark-mode .user-message {
+    background-color: #1c7ed6;
+}
+
+body.dark-mode .bot-message {
+    background-color: #3a3a3a;
+    color: #f0f0f0;
+}
+
+body.dark-mode .bot-message::after {
+    background-color: #3a3a3a;
+}
+
+body.dark-mode .bot-message::before {
+    background: linear-gradient(to right, #ff7e5f, #feb47b);
+}
+
+body.dark-mode .bot-message.smart-response::before {
+    background: linear-gradient(to right, #74c0fc, #339af0);
+}
+
+body.dark-mode #user-input {
+    background-color: #2d2d2d;
+    color: #f0f0f0;
+    border-color: #444;
+}
+
+body.dark-mode button {
+    background-color: #4dabf7;
+    border-radius: 20px;
+}
+
+body.dark-mode button:hover {
+    background-color: #339af0;
+}
+
+body.dark-mode #generate-container {
+    background-color: #2d2d2d;
+}
+
+body.dark-mode #generate-container h3 {
+    color: #f0f0f0;
+}
+
+body.dark-mode #generate-buttons {
+    background-color: #1e1e1e;
+}
+
+body.dark-mode .generate-btn {
+    background-color: #4dabf7;
+}
+
+body.dark-mode .generate-btn:hover {
+    background-color: #339af0;
+}
+
+body.dark-mode pre, body.dark-mode .code-block {
+    background-color: #1e1e1e;
+    color: #d4d4d4;
+}
+
+body.dark-mode .code-block code::before {
+    color: #808080;
+    border-right-color: #404040;
+}
+
+body.dark-mode .toggle-container {
+    background-color: #2d2d2d;
+    box-shadow: 0 1px 3px rgba(255,255,255,0.1), 0 1px 2px rgba(255,255,255,0.14);
+}
+
+body.dark-mode .toggle-label {
+    color: #f0f0f0;
+}
+
+/* Update the existing styles for the toggle container */
+#mode-toggle-container {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+/* Highlight.js overrides */
+.hljs {
+    background: transparent;
+    padding: 0;
 }
 ```
 
