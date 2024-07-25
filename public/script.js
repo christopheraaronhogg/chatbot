@@ -21,7 +21,36 @@ let currentJs = '';
 let currentReadme = '';
 let projectContext = '';
 let uploadedFiles = [];
-let selectedFiles = []; // New array to keep track of selected files
+let selectedFiles = [];
+
+let sessionInputTokens = 0;
+let sessionOutputTokens = 0;
+let sessionCost = 0;
+
+const COST_PER_1K_TOKENS = {
+    'gpt-4o-mini': {
+        input: 0.00015,  // Example cost for GPT-4 Mini input tokens
+        output: 0.00060  // Example cost for GPT-4 Mini output tokens
+    },
+    'claude-3-5-sonnet': {
+        input: 0.003,  // Example cost for Claude 3.5 Sonnet input tokens
+        output: 0.015  // Example cost for Claude 3.5 Sonnet output tokens
+    }
+};
+
+function updateCost(model, inputTokens, outputTokens) {
+    sessionInputTokens += inputTokens;
+    sessionOutputTokens += outputTokens;
+    
+    const inputCost = (inputTokens / 1000) * COST_PER_1K_TOKENS[model].input;
+    const outputCost = (outputTokens / 1000) * COST_PER_1K_TOKENS[model].output;
+    
+    sessionCost += inputCost + outputCost;
+    
+    // Update a hidden element with the cost and token counts
+    const costElement = document.getElementById('session-cost');
+    costElement.textContent = `Session Cost: $${sessionCost.toFixed(4)} (${sessionInputTokens} input tokens, ${sessionOutputTokens} output tokens)`;
+}
 
 function cleanCodeBlock(code, language) {
     code = code.replace(new RegExp(`\`\`\`${language}\\s*\\n?|^\`\`\`|\\s*\`\`\`$`, 'g'), '');
@@ -118,18 +147,24 @@ async function handleSend() {
     if (userMessage) {
         addMessage(userMessage, true);
         userInput.value = '';
-        loadingSpinner.style.display = 'flex'; // Show loading spinner
+        loadingSpinner.style.display = 'flex';
+        
         // Include selected files in the prompt
         let prompt = `${projectContext}\n\nHuman: ${userMessage}\n\nSelected Files: ${selectedFiles.join(', ')}\n\nAssistant: Please provide your response. If you include any code snippets, always wrap them in triple backticks (\`\`\`) for proper formatting.`;
 
         try {
             const response = await generateContent(prompt);
             addMessage(response);
+            
+            // Estimate tokens (this is still a rough estimate)
+            const estimatedInputTokens = prompt.length / 4;
+            const estimatedOutputTokens = response.length / 4;
+            updateCost(getCurrentModel(), estimatedInputTokens, estimatedOutputTokens);
         } catch (error) {
             console.error('Error:', error);
             addMessage('An error occurred while generating the response. Please try again.');
         } finally {
-            loadingSpinner.style.display = 'none'; // Hide loading spinner
+            loadingSpinner.style.display = 'none';
         }
     }
 }
@@ -150,6 +185,11 @@ async function handleHtml() {
         currentHtml = newHtml;
         addMessage("Updated HTML:");
         addMessage("```html\n" + currentHtml + "\n```");
+        
+        // Estimate tokens and update cost
+        const estimatedInputTokens = prompt.length / 4;
+        const estimatedOutputTokens = newHtml.length / 4;
+        updateCost(getCurrentModel(), estimatedInputTokens, estimatedOutputTokens);
     } finally {
         loadingSpinner.style.display = 'none';
     }
@@ -171,6 +211,11 @@ async function handleCss() {
         currentCss = newCss;
         addMessage("Updated CSS:");
         addMessage("```css\n" + currentCss + "\n```");
+        
+        // Estimate tokens and update cost
+        const estimatedInputTokens = prompt.length / 4;
+        const estimatedOutputTokens = newCss.length / 4;
+        updateCost(getCurrentModel(), estimatedInputTokens, estimatedOutputTokens);
     } finally {
         loadingSpinner.style.display = 'none';
     }
@@ -192,6 +237,11 @@ async function handleJs() {
         currentJs = newJs;
         addMessage("Updated JavaScript:");
         addMessage("```javascript\n" + currentJs + "\n```");
+        
+        // Estimate tokens and update cost
+        const estimatedInputTokens = prompt.length / 4;
+        const estimatedOutputTokens = newJs.length / 4;
+        updateCost(getCurrentModel(), estimatedInputTokens, estimatedOutputTokens);
     } finally {
         loadingSpinner.style.display = 'none';
     }
@@ -211,6 +261,11 @@ async function handleReadme() {
         currentReadme = newReadme;
         addMessage("Generated README.md:");
         addMessage("```markdown\n" + currentReadme + "\n```");
+        
+        // Estimate tokens and update cost
+        const estimatedInputTokens = prompt.length / 4;
+        const estimatedOutputTokens = newReadme.length / 4;
+        updateCost(getCurrentModel(), estimatedInputTokens, estimatedOutputTokens);
     } finally {
         loadingSpinner.style.display = 'none';
     }
@@ -235,6 +290,11 @@ Clarifying question:`;
     try {
         const question = await generateContent(prompt);
         addMessage(question);
+        
+        // Estimate tokens and update cost
+        const estimatedInputTokens = prompt.length / 4;
+        const estimatedOutputTokens = question.length / 4;
+        updateCost(getCurrentModel(), estimatedInputTokens, estimatedOutputTokens);
     } finally {
         loadingSpinner.style.display = 'none';
     }
@@ -269,6 +329,11 @@ Implementation advice:`;
         const advice = await generateContent(prompt);
         addMessage("Implementation Advice:");
         addMessage(advice);
+        
+        // Estimate tokens and update cost
+        const estimatedInputTokens = prompt.length / 4;
+        const estimatedOutputTokens = advice.length / 4;
+        updateCost(getCurrentModel(), estimatedInputTokens, estimatedOutputTokens);
     } finally {
         loadingSpinner.style.display = 'none';
     }
@@ -385,5 +450,20 @@ function addFilesToContext() {
         projectContext += filesContext;
     }
 }
+
+document.getElementById('cost-info-button').addEventListener('click', function() {
+    alert('This is an estimated cost based on the number of tokens processed. ' +
+          'Actual costs may vary. The cost is calculated using the following rates:\n\n' +
+          `GPT-4 Mini:\n` +
+          `  Input: $${COST_PER_1K_TOKENS['gpt-4o-mini'].input} per 1K tokens\n` +
+          `  Output: $${COST_PER_1K_TOKENS['gpt-4o-mini'].output} per 1K tokens\n\n` +
+          `Claude 3.5 Sonnet:\n` +
+          `  Input: $${COST_PER_1K_TOKENS['claude-3-5-sonnet'].input} per 1K tokens\n` +
+          `  Output: $${COST_PER_1K_TOKENS['claude-3-5-sonnet'].output} per 1K tokens\n\n` +
+          `Current Session:\n` +
+          `  Input Tokens: ${sessionInputTokens}\n` +
+          `  Output Tokens: ${sessionOutputTokens}\n` +
+          `  Total Cost: $${sessionCost.toFixed(4)}`);
+});
 
 addMessage("Hello! I'm here to help you with your project. What would you like to do?");
