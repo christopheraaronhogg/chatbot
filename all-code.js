@@ -18,7 +18,9 @@ async function packageCodebase(rootDir, outputFile) {
     '*.swo',
     'thumbs.db',
     '.vscode',
-    '.idea'
+    '.idea',
+    '*.png',
+    '*.ico'
   ];
 
   function shouldIgnore(filePath) {
