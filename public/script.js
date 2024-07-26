@@ -20,7 +20,13 @@ const anthropicApiKeyInput = document.getElementById('anthropic-api-key');
 const saveApiKeysButton = document.getElementById('save-api-keys');
 const advancedOptionsToggle = document.getElementById('advanced-options-toggle');
 const advancedOptions = document.getElementById('advanced-options');
+const openAIInputPricePerMillion = 0.15;
+const openAIOutputPricePerMillion = 0.60;
+const anthropicInputPricePerMillion = 3.00;
+const anthropicOutputPricePerMillion = 15.00;
 
+
+let sessionCost = 0;
 let conversation = [];
 let currentHtml = '';
 let currentCss = '';
@@ -321,6 +327,18 @@ async function generateContent(prompt) {
         const data = await response.json();
         console.log('API Response:', data);
         if (data.content) {
+            // Calculate the cost based on the number of input and output tokens and the model used
+            const inputCost = model === 'gpt-4o-mini' ? 
+                (data.inputTokens / 1000000) * openAIInputPricePerMillion : 
+                (data.inputTokens / 1000000) * anthropicInputPricePerMillion;
+            
+            const outputCost = model === 'gpt-4o-mini' ? 
+                (data.outputTokens / 1000000) * openAIOutputPricePerMillion : 
+                (data.outputTokens / 1000000) * anthropicOutputPricePerMillion;
+            
+            const totalCost = inputCost + outputCost;
+            
+            updateSessionCost(totalCost);
             return data.content;
         } else if (data.error) {
             console.error('API Error:', data.error);
@@ -333,6 +351,17 @@ async function generateContent(prompt) {
         console.error('Error generating content:', error);
         return 'Error generating content. Please check the console for more details.';
     }
+}
+
+
+document.getElementById('cost-info-button').addEventListener('click', () => {
+    alert('This is an estimated cost based on the number of tokens processed. Prices are calculated per million tokens. Actual costs may vary.');
+});
+
+function updateSessionCost(cost) {
+    sessionCost += cost;
+    const costContainer = document.getElementById('session-cost');
+    costContainer.textContent = `Session Cost: $${sessionCost.toFixed(4)}`;
 }
 
 async function handleSend() {
@@ -655,3 +684,10 @@ toggleAdvancedOptionsBtn.addEventListener('click', () => {
     advancedOptionsContent.style.display = isHidden ? 'block' : 'none';
     toggleAdvancedOptionsBtn.textContent = isHidden ? 'Hide Advanced Options' : 'Show Advanced Options';
 });
+
+document.addEventListener('DOMContentLoaded', function() {
+    const stickyToggles = document.getElementById('sticky-toggles');
+    const stickyToggleHeight = stickyToggles.offsetHeight;
+    document.body.style.paddingTop = stickyToggleHeight + 'px';
+});
+

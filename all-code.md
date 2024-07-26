@@ -110,7 +110,9 @@ packageCodebase(rootDirectory, outputFilePath).catch(console.error);
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
-    "path": "^0.12.7"
+    "multer": "^1.4.5-lts.1",
+    "path": "^0.12.7",
+    "tiktoken": "^1.0.15"
   }
 }
 
@@ -207,7 +209,7 @@ packageCodebase(rootDirectory, outputFilePath).catch(console.error);
             
         </section>
 
-        <section id="generate-container" style="display: none;">
+        <section id="generate-container">
             <h3>Generate:</h3>
             <div id="generate-buttons">
                 <button id="html-button" class="generate-btn"><i class="fab fa-html5"></i> HTML</button>
@@ -239,6 +241,13 @@ packageCodebase(rootDirectory, outputFilePath).catch(console.error);
             <h3>Files to be added with next message:</h3>
             <ul id="files-to-add-list"></ul>
         </section>
+
+        <div id="cost-container" style="text-align: right; font-size: 0.8em; color: #888; margin-top: 20px;">
+            <span id="session-cost">Session Cost: $0.0000</span>
+            <button id="cost-info-button" style="background: none; border: none; color: #888; cursor: pointer;">
+                <i class="fas fa-info-circle"></i>
+            </button>
+        </div>
     </main>
 
     <div id="loading-spinner" class="loading-spinner" style="display: none;">
@@ -278,7 +287,13 @@ const anthropicApiKeyInput = document.getElementById('anthropic-api-key');
 const saveApiKeysButton = document.getElementById('save-api-keys');
 const advancedOptionsToggle = document.getElementById('advanced-options-toggle');
 const advancedOptions = document.getElementById('advanced-options');
+const openAIInputPricePerMillion = 0.15;
+const openAIOutputPricePerMillion = 0.60;
+const anthropicInputPricePerMillion = 3.00;
+const anthropicOutputPricePerMillion = 15.00;
 
+
+let sessionCost = 0;
 let conversation = [];
 let currentHtml = '';
 let currentCss = '';
@@ -317,15 +332,59 @@ document.addEventListener('DOMContentLoaded', () => {
     customAnthropicKey = savedAnthropicKey || '';
 });
 
-// Function to auto-resize the input
 function autoResize() {
-    this.style.height = 'auto'; // Reset height to auto to calculate the new height
-    const newHeight = Math.min(this.scrollHeight, 150); // Set height to the scroll height, capped at 150px
-    this.style.height = newHeight + 'px'; // Apply the new height
+    // Store the current cursor position and scroll position
+    const cursorPosition = this.selectionStart;
+    const scrollTop = this.scrollTop;
+    const viewportHeight = this.clientHeight;
+    const wasAtBottom = (this.scrollHeight - this.scrollTop === viewportHeight);
+
+    // Temporarily shrink the textarea to get the correct scrollHeight
+    this.style.height = '0px';
+    
+    // Get the scrollHeight and add a small buffer
+    const scrollHeight = this.scrollHeight + 2;
+    
+    // Set the new height, capped at 150px
+    const newHeight = Math.min(scrollHeight, 300);
+    this.style.height = newHeight + 'px';
+
+    // Force a minimum height of two lines
+    const lineHeight = parseInt(window.getComputedStyle(this).lineHeight);
+    const minHeight = lineHeight * 2;
+    if (newHeight < minHeight) {
+        this.style.height = minHeight + 'px';
+    }
+
+    // Show scrollbar only if content exceeds max height
+    this.style.overflowY = scrollHeight > 150 ? 'scroll' : 'hidden';
+
+    // Restore the cursor position
+    this.setSelectionRange(cursorPosition, cursorPosition);
+
+    // Scroll handling
+    if (wasAtBottom || cursorPosition === this.value.length) {
+        // If we were at the bottom before resizing or the cursor is at the end,
+        // scroll to the bottom
+        this.scrollTop = this.scrollHeight;
+    } else {
+        // Calculate if the cursor is now out of view
+        const cursorY = this.scrollHeight - this.scrollTop - viewportHeight;
+        
+        if (cursorY > 0 && cursorY < lineHeight) {
+            // If the cursor is just out of view, scroll to make it visible
+            this.scrollTop = this.scrollHeight - viewportHeight;
+        } else {
+            // Otherwise, maintain the previous scroll position
+            this.scrollTop = scrollTop;
+        }
+    }
 }
 
-// Attach event listener to the input
-userInput.addEventListener('input', autoResize);
+
+
+
+
 
 document.querySelectorAll('.toggle-password').forEach(icon => {
     icon.addEventListener('click', () => {
@@ -535,6 +594,18 @@ async function generateContent(prompt) {
         const data = await response.json();
         console.log('API Response:', data);
         if (data.content) {
+            // Calculate the cost based on the number of input and output tokens and the model used
+            const inputCost = model === 'gpt-4o-mini' ? 
+                (data.inputTokens / 1000000) * openAIInputPricePerMillion : 
+                (data.inputTokens / 1000000) * anthropicInputPricePerMillion;
+            
+            const outputCost = model === 'gpt-4o-mini' ? 
+                (data.outputTokens / 1000000) * openAIOutputPricePerMillion : 
+                (data.outputTokens / 1000000) * anthropicOutputPricePerMillion;
+            
+            const totalCost = inputCost + outputCost;
+            
+            updateSessionCost(totalCost);
             return data.content;
         } else if (data.error) {
             console.error('API Error:', data.error);
@@ -549,11 +620,22 @@ async function generateContent(prompt) {
     }
 }
 
+
+document.getElementById('cost-info-button').addEventListener('click', () => {
+    alert('This is an estimated cost based on the number of tokens processed. Prices are calculated per million tokens. Actual costs may vary.');
+});
+
+function updateSessionCost(cost) {
+    sessionCost += cost;
+    const costContainer = document.getElementById('session-cost');
+    costContainer.textContent = `Session Cost: $${sessionCost.toFixed(4)}`;
+}
+
 async function handleSend() {
     const userMessage = userInput.value.trim();
     if (userMessage) {
         addMessage(userMessage, true);
-        userInput.value = '';
+        resetInputBox(); // Reset the input box after sending
         loadingSpinner.style.display = 'flex';
 
         let contextString;
@@ -794,16 +876,18 @@ readmeButton.addEventListener('click', handleReadme);
 questionButton.addEventListener('click', handleQuestion);
 implementationButton.addEventListener('click', handleImplementationAdvice);
 
-userInput.addEventListener('keydown', (e) => {
+// Attach event listeners to the input
+userInput.addEventListener('input', autoResize);
+userInput.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') {
         if (e.shiftKey) {
             // Shift+Enter: add a line break
             e.preventDefault();
-            const cursorPosition = userInput.selectionStart;
-            const currentValue = userInput.value;
-            userInput.value = currentValue.slice(0, cursorPosition) + '\n' + currentValue.slice(cursorPosition);
-            userInput.selectionStart = userInput.selectionEnd = cursorPosition + 1;
-            autoResize();
+            const cursorPosition = this.selectionStart;
+            const currentValue = this.value;
+            this.value = currentValue.slice(0, cursorPosition) + '\n' + currentValue.slice(cursorPosition);
+            this.selectionStart = this.selectionEnd = cursorPosition + 1;
+            autoResize.call(this);
         } else {
             // Enter without Shift: send the message
             e.preventDefault();
@@ -811,6 +895,16 @@ userInput.addEventListener('keydown', (e) => {
         }
     }
 });
+
+function resetInputBox() {
+    userInput.value = '';
+    userInput.style.height = 'auto';
+    const lineHeight = parseInt(window.getComputedStyle(userInput).lineHeight);
+    const minHeight = lineHeight * 2;
+    userInput.style.height = minHeight + 'px';
+    userInput.style.overflowY = 'hidden';
+}
+
 
 modeToggle.addEventListener('change', () => {
     const mode = modeToggle.checked ? 'Smart' : 'Quick';
@@ -858,8 +952,54 @@ toggleAdvancedOptionsBtn.addEventListener('click', () => {
     toggleAdvancedOptionsBtn.textContent = isHidden ? 'Hide Advanced Options' : 'Show Advanced Options';
 });
 
-userInput.addEventListener('input', autoResize);
-userInput.addEventListener('focus', autoResize);
+document.addEventListener('DOMContentLoaded', function() {
+    const stickyToggles = document.getElementById('sticky-toggles');
+    const stickyToggleHeight = stickyToggles.offsetHeight;
+    document.body.style.paddingTop = stickyToggleHeight + 'px';
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+    const stickyInput = document.getElementById('sticky-input');
+    const main = document.querySelector('main');
+    let isAtBottom = true;
+
+    function handleScroll() {
+        const scrollPosition = window.innerHeight + window.pageYOffset;
+        const documentHeight = document.documentElement.scrollHeight;
+        isAtBottom = scrollPosition >= documentHeight - 10; // 10px threshold
+
+        if (isAtBottom) {
+            stickyInput.classList.add('at-bottom');
+        } else {
+            stickyInput.classList.remove('at-bottom');
+        }
+    }
+
+    window.addEventListener('scroll', handleScroll);
+
+    // Handle input focus
+    document.getElementById('user-input').addEventListener('focus', function() {
+        stickyInput.classList.add('focused');
+    });
+
+    document.getElementById('user-input').addEventListener('blur', function() {
+        stickyInput.classList.remove('focused');
+    });
+
+    // Adjust main content padding
+    function adjustMainPadding() {
+        const inputHeight = stickyInput.offsetHeight;
+        main.style.paddingBottom = `${inputHeight + 20}px`; // Add extra padding
+    }
+
+    window.addEventListener('resize', adjustMainPadding);
+    adjustMainPadding();
+
+    // Initial check
+    handleScroll();
+});
+
+
 ```
 
 # public\styles.css
@@ -1048,42 +1188,53 @@ h1 {
 
 /* Input and Buttons */
 #input-container {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
+    position: relative;
     background-color: var(--chat-background);
-    padding: 20px;
-    display: flex;
-    align-items: center;
-    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+    border-radius: var(--border-radius);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.08);
+    transition: all 0.3s ease-in-out;
 }
 
 #user-input {
-    position: fixed;
-    bottom: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: calc(100% - 40px);
-    max-width: var(--max-width);
-    border: 2px solid #e0e0e0;
-    border-radius: var(--border-radius-small);
+    width: 100%;
+    border: 2px solid var(--medium-gray);
+    border-radius: var(--border-radius);
     font-size: 16px;
     min-height: 50px;
-    max-height: 150px;
-    overflow-y: auto;
+    max-height: 300px;
     padding: 12px 16px;
-    padding-right: 50px; /* Make room for the send button */
+    padding-right: 50px;
     resize: none;
-    transition: all 0.3s ease;
-    background-color: var(--chat-background);
-    box-shadow: var(--shadow-small);
+    overflow-y: auto;
     box-sizing: border-box;
+    background-color: transparent;
+    color: var(--text-color);
 }
 #user-input:focus {
     border-color: var(--primary-color);
     outline: none;
     box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.3);
+}
+
+#sticky-input.at-bottom {
+    bottom: 0;
+    width: 100%;
+    max-width: none;
+    transform: none;
+}
+
+#sticky-input.at-bottom #input-container {
+    border-radius: 0;
+    box-shadow: none;
+}
+
+body.dark-mode #input-container {
+    background-color: var(--chat-background);
+}
+
+body.dark-mode #user-input {
+    color: var(--text-color);
+    border-color: var(--medium-gray);
 }
 
 button {
@@ -1107,9 +1258,9 @@ button:hover, .generate-btn:hover, .file-upload-label:hover {
     transform: translateY(-2px);
 }
 #send-button {
-    position: fixed;
-    right: calc((100% - var(--max-width)) / 2 + 10px);
-    bottom: 30px;
+    position: absolute;
+    right: 30px;
+    bottom: 10px;
     background-color: var(--primary-color);
     color: var(--true-white);
     border: none;
@@ -1121,7 +1272,6 @@ button:hover, .generate-btn:hover, .file-upload-label:hover {
     justify-content: center;
     cursor: pointer;
     transition: all 0.3s ease;
-    z-index: 10;
 }
 
 #send-button:hover {
@@ -1597,6 +1747,9 @@ input:checked + .toggle-slider:before {
     margin-bottom: 20px;
     position: relative;
     width: 100%;
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 0 20px;
 }
 
 #toggles-wrapper {
@@ -1733,6 +1886,48 @@ body.dark-mode .file-item.selected {
     margin-right: auto;
     width: 100%;
 }
+
+#sticky-toggles {
+    position: sticky;
+    top: 0;
+    background-color: rgba(255,255,255,0);
+    z-index: 1000;
+    padding: 10px 0;
+}
+
+#mode-toggle-container {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 0 20px;
+}
+
+/* Adjust the main content to prevent overlap */
+main {
+    padding-top: 20px;
+    padding-bottom: 100px; 
+}
+
+#sticky-input {    position: fixed;
+    bottom: 20px; /* Add some space from the bottom */
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(100% - 40px); /* Full width minus some padding */
+    max-width: var(--max-width);
+    z-index: 1000;
+    transition: all 0.3s ease-in-out;
+    background-color: transparent;
+}
+
+body.dark-mode #sticky-input {
+    background-color: var(--background-color);
+    box-shadow: 0 -2px 5px rgba(255,255,255,0.1);
+}
+
+body.dark-mode #user-input {
+    background-color: var(--chat-background);
+    color: var(--text-color);
+    border-color: var(--medium-gray);
+}
 ```
 
 # README.md
@@ -1819,6 +2014,7 @@ require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
 const axios = require('axios');
+const tiktoken = require('tiktoken');
 
 const app = express();
 
@@ -1833,6 +2029,17 @@ app.use(express.static('public'));
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
+// Function to count tokens for OpenAI
+function countTokensOpenAI(text) {
+    const encoder = tiktoken.encoding_for_model("gpt-4");
+    return encoder.encode(text).length;
+}
+
+// Function to estimate tokens for Anthropic (simple word-based estimation)
+function estimateTokensAnthropic(text) {
+    return text.split(/\s+/).length;
+}
+
 app.post('/generate', async (req, res) => {
     const { model, prompt, openaiApiKey, anthropicApiKey } = req.body;
 
@@ -1846,12 +2053,16 @@ app.post('/generate', async (req, res) => {
 
     try {
         let response;
+        let inputTokens, outputTokens;
+
         if (model === 'gpt-4o-mini') {
             console.log('Calling OpenAI API');
             const usedKey = openaiApiKey || OPENAI_API_KEY;
             console.log('Using OpenAI API Key:', maskApiKey(usedKey));
             console.log('Key source:', openaiApiKey ? 'Custom' : 'Environment');
             
+            inputTokens = countTokensOpenAI(prompt);
+
             response = await axios.post('https://api.openai.com/v1/chat/completions', {
                 model: 'gpt-4o-mini',
                 messages: [{ role: 'user', content: prompt }],
@@ -1862,14 +2073,23 @@ app.post('/generate', async (req, res) => {
                     'Content-Type': 'application/json'
                 }
             });
+
+            outputTokens = response.data.usage.completion_tokens;
             console.log('OpenAI API Response:', response.data);
-            return res.json({ content: response.data.choices[0].message.content });
+
+            return res.json({ 
+                content: response.data.choices[0].message.content,
+                inputTokens: inputTokens,
+                outputTokens: outputTokens
+            });
         } else if (model === 'claude-3-5-sonnet') {
             console.log('Calling Anthropic API');
             const usedKey = anthropicApiKey || ANTHROPIC_API_KEY;
             console.log('Using Anthropic API Key:', maskApiKey(usedKey));
             console.log('Key source:', anthropicApiKey ? 'Custom' : 'Environment');
             
+            inputTokens = estimateTokensAnthropic(prompt);
+
             response = await axios.post('https://api.anthropic.com/v1/messages', {
                 model: "claude-3-5-sonnet-20240620",
                 max_tokens: 8192,
@@ -1893,8 +2113,15 @@ app.post('/generate', async (req, res) => {
                     'Content-Type': 'application/json'
                 }
             });
+
+            outputTokens = estimateTokensAnthropic(response.data.content[0].text);
             console.log('Anthropic API Response:', response.data);
-            return res.json({ content: response.data.content[0].text });
+
+            return res.json({ 
+                content: response.data.content[0].text,
+                inputTokens: inputTokens,
+                outputTokens: outputTokens
+            });
         } else {
             throw new Error(`Unsupported model: ${model}`);
         }
@@ -1910,5 +2137,31 @@ app.post('/generate', async (req, res) => {
 app.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);
 });
+
+const multer = require('multer');
+const path = require('path');
+
+// Configure multer for handling file uploads
+const upload = multer({ dest: 'uploads/' });
+
+// Add this route to your server.js file
+app.post('/upload', upload.array('files'), (req, res) => {
+    try {
+        const uploadedFiles = req.files.map(file => {
+            const fileContent = fs.readFileSync(file.path, 'utf8');
+            fs.unlinkSync(file.path); // Delete the temporary file
+            return {
+                name: file.originalname,
+                content: fileContent
+            };
+        });
+
+        res.json({ success: true, files: uploadedFiles });
+    } catch (error) {
+        console.error('Error handling file upload:', error);
+        res.status(500).json({ success: false, error: 'Error uploading files' });
+    }
+});
+
 ```
 

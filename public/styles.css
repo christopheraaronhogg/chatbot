@@ -731,6 +731,9 @@ input:checked + .toggle-slider:before {
     margin-bottom: 20px;
     position: relative;
     width: 100%;
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 0 20px;
 }
 
 #toggles-wrapper {
@@ -867,3 +870,23 @@ body.dark-mode .file-item.selected {
     margin-right: auto;
     width: 100%;
 }
+
+#sticky-toggles {
+    position: sticky;
+    top: 0;
+    background-color: rgba(255,255,255,0);
+    z-index: 1000;
+    padding: 10px 0;
+}
+
+#mode-toggle-container {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 0 20px;
+}
+
+/* Adjust the main content to prevent overlap */
+main {
+    padding-top: 20px;
+}
+
