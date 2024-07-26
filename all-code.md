@@ -39,7 +39,9 @@ async function packageCodebase(rootDir, outputFile) {
     '*.swo',
     'thumbs.db',
     '.vscode',
-    '.idea'
+    '.idea',
+    '*.png',
+    '*.ico'
   ];
 
   function shouldIgnore(filePath) {
@@ -127,40 +129,85 @@ packageCodebase(rootDirectory, outputFilePath).catch(console.error);
     <script src="https://kit.fontawesome.com/0b3c182226.js" crossorigin="anonymous"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/atom-one-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+    <link rel="icon" href="code-maker.ico" type="image/x-icon">
+
 </head>
 <body>
     <header>
-        <h1>Project Generator Chatbot</h1>
+        
+        <h1><img src="code-maker.png" height="180px"></h1>
+        
     </header>
     <main>
         <section id="mode-toggle-container">
-            <div class="toggle-container">
-                <span class="toggle-label"><i class="fas fa-bolt"></i> Quick</span>
-                <label class="toggle-switch">
-                    <input type="checkbox" id="mode-toggle">
-                    <span class="toggle-slider"></span>
-                </label>
-                <span class="toggle-label"><i class="fas fa-brain"></i> Smart</span>
-            </div>
-            <div class="toggle-container">
-                <span class="toggle-label"><i class="fas fa-sun"></i> Light</span>
-                <label class="toggle-switch">
-                    <input type="checkbox" id="theme-toggle">
-                    <span class="toggle-slider"></span>
-                </label>
-                <span class="toggle-label"><i class="fas fa-moon"></i> Dark</span>
+            <div id="toggles-wrapper">
+                <div class="toggle-container">
+                    <span class="toggle-label"><i class="fas fa-bolt"></i> Quick</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="mode-toggle">
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="toggle-label"><i class="fas fa-brain"></i> Smart</span>
+                </div>
+                <div class="toggle-container">
+                    <span class="toggle-label"><i class="fas fa-sun"></i> Light</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="theme-toggle">
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="toggle-label"><i class="fas fa-moon"></i> Dark</span>
+                </div>
             </div>
         </section>
 
         <section id="chat-section">
-            <div id="chat-container"></div>
-            <div id="input-container">
-                <textarea id="user-input" placeholder="Type your message here..."></textarea>
-                <button id="send-button"><i class="fas fa-paper-plane"></i> Send</button>
+            <div id="chat-header">
+                <h2>Conversation</h2>
+                <button id="advanced-options-toggle">
+                    <i class="fas fa-cog"></i>
+                </button>
             </div>
+            <div id="advanced-options">
+                <h3>Advanced Options</h3>
+                <div id="context-control">
+                    <div class="option-group">
+                        <input type="checkbox" id="limit-context-checkbox">
+                        <label for="limit-context-checkbox">Limit context</label>
+                    </div>
+                    <div class="option-group">
+                        <label for="context-depth">Context Depth:</label>
+                        <input type="number" id="context-depth" min="1" value="5" disabled>
+                        <span>back-and-forth messages</span>
+                    </div>
+                </div>
+                <div id="api-keys-section">
+                    <h4>API Keys</h4>
+                    <div class="api-key-input">
+                        <label for="openai-api-key">OpenAI API Key:</label>
+                        <div class="input-with-icon">
+                            <input type="password" id="openai-api-key" placeholder="Enter OpenAI API Key">
+                            <i class="fas fa-eye toggle-password"></i>
+                        </div>
+                    </div>
+                    <div class="api-key-input">
+                        <label for="anthropic-api-key">Anthropic API Key:</label>
+                        <div class="input-with-icon">
+                            <input type="password" id="anthropic-api-key" placeholder="Enter Anthropic API Key">
+                            <i class="fas fa-eye toggle-password"></i>
+                        </div>
+                    </div>
+                    <button id="save-api-keys" class="btn-primary">Save API Keys</button>
+                </div>
+            </div>
+            
+            <div id="chat-container"></div>
+            <textarea id="user-input" placeholder="Type your message here..."></textarea>
+            <button id="send-button"><i class="fas fa-paper-plane"></i></button>
+            
+            
         </section>
 
-        <section id="generate-container">
+        <section id="generate-container" style="display: none;">
             <h3>Generate:</h3>
             <div id="generate-buttons">
                 <button id="html-button" class="generate-btn"><i class="fab fa-html5"></i> HTML</button>
@@ -171,8 +218,8 @@ packageCodebase(rootDirectory, outputFilePath).catch(console.error);
             </div>
         </section>
 
-        <button id="question-button"><i class="fas fa-question-circle"></i> Ask Question</button>
-        <label for="file-upload" class="file-upload-label">
+        <button id="question-button" style="display: none;"><i class="fas fa-question-circle"></i> Ask Question</button>
+        <label for="file-upload" class="file-upload-label" style="display: none;">
             <i class="fas fa-cloud-upload-alt"></i> Add Files
         </label>
 
@@ -224,6 +271,13 @@ const uploadButton = document.getElementById('upload-button');
 const uploadedFilesContainer = document.getElementById('uploaded-files-container');
 const fileList = document.getElementById('file-list');
 const loadingSpinner = document.getElementById('loading-spinner');
+const limitContextCheckbox = document.getElementById('limit-context-checkbox');
+const contextDepthInput = document.getElementById('context-depth');
+const openaiApiKeyInput = document.getElementById('openai-api-key');
+const anthropicApiKeyInput = document.getElementById('anthropic-api-key');
+const saveApiKeysButton = document.getElementById('save-api-keys');
+const advancedOptionsToggle = document.getElementById('advanced-options-toggle');
+const advancedOptions = document.getElementById('advanced-options');
 
 let conversation = [];
 let currentHtml = '';
@@ -233,6 +287,81 @@ let currentReadme = '';
 let projectContext = '';
 let uploadedFiles = [];
 let selectedFiles = [];
+let limitContext = false;
+let contextDepth = 5;
+let customOpenAIKey = '';
+let customAnthropicKey = '';
+
+saveApiKeysButton.addEventListener('click', () => {
+    customOpenAIKey = openaiApiKeyInput.value.trim();
+    customAnthropicKey = anthropicApiKeyInput.value.trim();
+    
+    if (customOpenAIKey || customAnthropicKey) {
+        localStorage.setItem('customOpenAIKey', customOpenAIKey);
+        localStorage.setItem('customAnthropicKey', customAnthropicKey);
+        alert('API keys saved successfully!');
+    } else {
+        alert('Please enter at least one API key.');
+    }
+});
+
+// Load saved API keys on page load
+document.addEventListener('DOMContentLoaded', () => {
+    const savedOpenAIKey = localStorage.getItem('customOpenAIKey');
+    const savedAnthropicKey = localStorage.getItem('customAnthropicKey');
+    
+    if (savedOpenAIKey) openaiApiKeyInput.value = savedOpenAIKey;
+    if (savedAnthropicKey) anthropicApiKeyInput.value = savedAnthropicKey;
+    
+    customOpenAIKey = savedOpenAIKey || '';
+    customAnthropicKey = savedAnthropicKey || '';
+});
+
+// Function to auto-resize the input
+function autoResize() {
+    this.style.height = 'auto'; // Reset height to auto to calculate the new height
+    const newHeight = Math.min(this.scrollHeight, 150); // Set height to the scroll height, capped at 150px
+    this.style.height = newHeight + 'px'; // Apply the new height
+}
+
+// Attach event listener to the input
+userInput.addEventListener('input', autoResize);
+
+document.querySelectorAll('.toggle-password').forEach(icon => {
+    icon.addEventListener('click', () => {
+        const input = icon.previousElementSibling;
+        if (input.type === 'password') {
+            input.type = 'text';
+            icon.classList.replace('fa-eye', 'fa-eye-slash');
+        } else {
+            input.type = 'password';
+            icon.classList.replace('fa-eye-slash', 'fa-eye');
+        }
+    });
+});
+
+advancedOptionsToggle.addEventListener('click', () => {
+    if (advancedOptions.classList.contains('show')) {
+        // Closing the options
+        advancedOptions.style.maxHeight = advancedOptions.scrollHeight + 'px';
+        advancedOptions.offsetHeight; // Force reflow
+        advancedOptions.style.maxHeight = '0px';
+        advancedOptions.classList.remove('show');
+    } else {
+        // Opening the options
+        advancedOptions.classList.add('show');
+        advancedOptions.style.maxHeight = advancedOptions.scrollHeight + 'px';
+    }
+});
+
+// Listen for the end of the transition
+advancedOptions.addEventListener('transitionend', (e) => {
+    if (e.propertyName === 'max-height') {
+        if (!advancedOptions.classList.contains('show')) {
+            advancedOptions.style.maxHeight = null;
+        }
+    }
+});
 
 function cleanCodeBlock(code, language) {
     console.log("Cleaning code block:", code); // Debug log
@@ -384,15 +513,6 @@ function handleCopyClick(e) {
     });
 }
 
-function escapeHtml(unsafe) {
-    return unsafe
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-}
-
 function getCurrentModel() {
     return modeToggle.checked ? 'claude-3-5-sonnet' : 'gpt-4o-mini';
 }
@@ -405,7 +525,12 @@ async function generateContent(prompt) {
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ model, prompt }),
+            body: JSON.stringify({ 
+                model, 
+                prompt,
+                openaiApiKey: customOpenAIKey,
+                anthropicApiKey: customAnthropicKey
+            }),
         });
         const data = await response.json();
         console.log('API Response:', data);
@@ -430,7 +555,18 @@ async function handleSend() {
         addMessage(userMessage, true);
         userInput.value = '';
         loadingSpinner.style.display = 'flex';
-        let prompt = `${projectContext}\n\nHuman: ${userMessage}\n\nSelected Files: ${selectedFiles.join(', ')}\n\nAssistant: Please provide your response. If you include any code snippets, always wrap them in triple backticks (\`\`\`) for proper formatting.`;
+
+        let contextString;
+        if (limitContext) {
+            // Get the last N back-and-forth messages based on contextDepth
+            const recentContext = conversation.slice(-contextDepth * 2);
+            contextString = recentContext.map(msg => `${msg.role}: ${msg.content}`).join('\n');
+        } else {
+            // Use the entire conversation
+            contextString = conversation.map(msg => `${msg.role}: ${msg.content}`).join('\n');
+        }
+
+        let prompt = `${contextString}\n\nHuman: ${userMessage}\n\nSelected Files: ${selectedFiles.join(', ')}\n\nAssistant: Please provide your response. If you include any code snippets, always wrap them in triple backticks (\`\`\`) for proper formatting.`;
 
         try {
             const response = await generateContent(prompt);
@@ -574,7 +710,7 @@ User input:
 ${userMessage}
 Implementation advice:`;
 
-    loadingSpinner.style.display = 'flex';
+loadingSpinner.style.display = 'flex';
     try {
         const advice = await generateContent(prompt);
         addMessage("Implementation Advice:");
@@ -608,7 +744,7 @@ function handleFileUpload(files) {
                 </div>
             `;
 
-            // ... rest of the function remains the same
+            fileList.appendChild(fileElement);
 
             if (i === files.length - 1) {
                 uploadedFilesContainer.style.display = 'block';
@@ -658,9 +794,21 @@ readmeButton.addEventListener('click', handleReadme);
 questionButton.addEventListener('click', handleQuestion);
 implementationButton.addEventListener('click', handleImplementationAdvice);
 
-userInput.addEventListener('keypress', (e) => {
+userInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
-        handleSend();
+        if (e.shiftKey) {
+            // Shift+Enter: add a line break
+            e.preventDefault();
+            const cursorPosition = userInput.selectionStart;
+            const currentValue = userInput.value;
+            userInput.value = currentValue.slice(0, cursorPosition) + '\n' + currentValue.slice(cursorPosition);
+            userInput.selectionStart = userInput.selectionEnd = cursorPosition + 1;
+            autoResize();
+        } else {
+            // Enter without Shift: send the message
+            e.preventDefault();
+            handleSend();
+        }
     }
 });
 
@@ -680,6 +828,17 @@ document.getElementById('file-upload').addEventListener('change', function(event
     }
 });
 
+limitContextCheckbox.addEventListener('change', function() {
+    limitContext = this.checked;
+    contextDepthInput.disabled = !limitContext;
+    console.log(`Context limiting ${limitContext ? 'enabled' : 'disabled'}`);
+});
+
+contextDepthInput.addEventListener('change', function() {
+    contextDepth = parseInt(this.value);
+    console.log(`Context depth set to ${contextDepth}`);
+});
+
 // Initialize the chat
 addMessage("Hello! I'm here to help you with your project. What would you like to do?");
 
@@ -692,45 +851,152 @@ document.addEventListener('DOMContentLoaded', (event) => {
         hljs.highlightElement(block);
     });
 });
+
+toggleAdvancedOptionsBtn.addEventListener('click', () => {
+    const isHidden = advancedOptionsContent.style.display === 'none';
+    advancedOptionsContent.style.display = isHidden ? 'block' : 'none';
+    toggleAdvancedOptionsBtn.textContent = isHidden ? 'Hide Advanced Options' : 'Show Advanced Options';
+});
+
+userInput.addEventListener('input', autoResize);
+userInput.addEventListener('focus', autoResize);
 ```
 
 # public\styles.css
 
 ```css
-/* General Styles */
-body {
-    background-color: #f0f4f8;
-    color: #333;
-    font-family: 'Roboto', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    margin: 0 auto;
-    max-width: 1000px;
-    padding: 20px;
-    line-height: 1.6;
+:root {
+    /* Colors */
+    --background-color: #f0f4f8;
+    --text-color: #333;
+    --heading-color: #1d1d1d;
+    --primary-color: #4dabf7;
+    --primary-hover-color: #339af0;
+    --secondary-color: #ff7e5f;
+    --secondary-hover-color: #e4532f;
+    --tertiary-color: #9b59b6;
+    --tertiary-hover-color: #8e44ad;
+    --success-color: #4CAF50;
+    --danger-color: #e74c3c;
+    --light-gray: #f1f3f5;
+    --medium-gray: #e9ecef;
+    --dark-gray: #34495e;
+    --darker-gray: #2c3e50;
+    --true-white: #f8f9fa;
+    --true-black: #000;
+
+    /* Chat specific colors */
+    --chat-background: var(--true-white);
+    --chat-header-background: var(--light-gray);
+    --chat-header-text: var(--text-color);
+    --chat-message-background: var(--light-gray);
+    --chat-message-text: var(--text-color);
+
+    /* Gradients */
+    --gradient-primary: linear-gradient(to right, #ff7e5f, #feb47b);
+    --gradient-secondary: linear-gradient(to right, #74c0fc, #339af0);
+
+    /* Fonts */
+    --font-primary: 'Roboto', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    --font-code: 'Fira Code', Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+
+    /* Sizes */
+    --max-width: 1000px;
+    --border-radius: 12px;
+    --border-radius-small: 8px;
+    --border-radius-large: 20px;
+
+    /* Shadows */
+    --shadow-small: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24);
+    --shadow-large: 0 4px 20px rgba(0, 0, 0, 0.15);
 }
 
-h1 {
-    color: #818d99;
-    margin-bottom: 30px;
+/* General Styles */
+body {
+    background-color: var(--background-color);
+    color: var(--text-color);
+    font-family: var(--font-primary);
+    margin: 0;
+    padding: 0;
+    line-height: 1.6;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+main {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    max-width: var(--max-width);
+    margin: 0 auto;
+    width: 100%;
+    padding: 20px;
+    padding-bottom: 80px; /* Make room for the input and button */
+    box-sizing: border-box;
+}
+
+h1, #chat-header h2 {
+    color: var(--heading-color);
     text-align: center;
-    font-size: 2.5em;
     font-weight: 300;
 }
 
+h1 {
+    margin-bottom: 30px;
+    font-size: 2.5em;
+}
+
 /* Chat Container */
-#chat-container {
-    background-color: #fff;
-    border: none;
-    border-radius: 12px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
-    height: 500px;
+#chat-section {
+    background-color: var(--chat-background);
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow-small);
     margin-bottom: 20px;
+    overflow: hidden;
+    position: relative;
+    transition: height 0.3s ease;
+    flex-grow:1;
+    display:flex;
+    flex-direction:column;
+    overflow: hidden;
+}
+
+#chat-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 20px;
+    background-color: var(--chat-header-background);
+    color: var(--chat-header-text);
+    border-top-left-radius: var(--border-radius);
+    border-top-right-radius: var(--border-radius);
+}
+
+#chat-header h2 {
+    margin: 0;
+    font-size: 1.2em;
+}
+
+#advanced-options-toggle, #advanced-options h3 {
+    background: none;
+    border: none;
+    color: var(--chat-header-text);
+    cursor: pointer;
+    font-size: 1.2em;
+    padding: 5px;
+}
+
+#chat-container {
+    flex-grow: 1;
     overflow-y: auto;
-    padding: 20px;
+    margin-bottom: 20px;
+    padding:18px;
 }
 
 .message {
     border-radius: 18px;
-    margin-bottom: 15px;
+    margin-bottom: 20px;
     max-width: 80%;
     padding: 12px 16px;
     font-size: 0.95em;
@@ -739,78 +1005,92 @@ h1 {
 }
 
 .user-message {
-    background-color: #4dabf7;
-    color: white;
+    background-color: var(--primary-color);
+    color: var(--true-white);
     margin-left: auto;
 }
 
 .bot-message {
-    color: #34495e;
-    background-color: #f1f3f5;
+    color: var(--chat-message-text);
+    background-color: var(--chat-message-background);
     border-radius: 21px;
     position: relative;
     z-index: 0;
 }
 
-.bot-message::before {
+.bot-message::before, .bot-message::after {
     content: '';
     position: absolute;
     top: -3px;
     left: -3px;
     right: -3px;
     bottom: -3px;
-    background: linear-gradient(to right, #ff7e5f, #feb47b);
     border-radius: 24px;
     z-index: -1;
 }
 
+.bot-message::before {
+    background: var(--gradient-primary);
+}
+
 .bot-message::after {
-    content: '';
-    position: absolute;
+    background: var(--chat-message-background);
     top: 0;
     left: 0;
     right: 0;
     bottom: 0;
-    background: #f1f3f5;
     border-radius: 21px;
-    z-index: -1;
 }
 
 .bot-message.smart-response::before {
-    background: linear-gradient(to right, #74c0fc, #339af0);
+    background: var(--gradient-secondary);
 }
 
 /* Input and Buttons */
 #input-container {
-    align-items: center;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background-color: var(--chat-background);
+    padding: 20px;
     display: flex;
-    gap: 10px;
-    margin-bottom: 20px;
+    align-items: center;
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
 }
 
 #user-input {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(100% - 40px);
+    max-width: var(--max-width);
     border: 2px solid #e0e0e0;
-    border-radius: 8px;
-    flex-grow: 1;
+    border-radius: var(--border-radius-small);
     font-size: 16px;
     min-height: 50px;
+    max-height: 150px;
+    overflow-y: auto;
     padding: 12px 16px;
-    resize: vertical;
+    padding-right: 50px; /* Make room for the send button */
+    resize: none;
     transition: all 0.3s ease;
-    box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
+    background-color: var(--chat-background);
+    box-shadow: var(--shadow-small);
+    box-sizing: border-box;
 }
-
 #user-input:focus {
-    border-color: #3498db;
+    border-color: var(--primary-color);
     outline: none;
-    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.25);
+    box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.3);
 }
 
 button {
-    background-color: #4dabf7;
+    background-color: var(--primary-color);
     border: none;
-    border-radius: 20px;
-    color: white;
+    border-radius: var(--border-radius-large);
+    color: var(--true-white);
     cursor: pointer;
     font-weight: 600;
     letter-spacing: 0.5px;
@@ -822,26 +1102,48 @@ button {
     box-shadow: none;
 }
 
-button:hover {
-    background-color: #339af0;
+button:hover, .generate-btn:hover, .file-upload-label:hover {
+    background-color: var(--primary-hover-color);
     transform: translateY(-2px);
+}
+#send-button {
+    position: fixed;
+    right: calc((100% - var(--max-width)) / 2 + 10px);
+    bottom: 30px;
+    background-color: var(--primary-color);
+    color: var(--true-white);
+    border: none;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    z-index: 10;
 }
 
 #send-button:hover {
-    background-color: #ff7e5f;
+    background-color: var(--primary-hover-color);
+    transform: scale(1.1);
+}
+
+#send-button i {
+    font-size: 18px;
 }
 
 /* Generate Container */
 #generate-container {
-    background-color: #34495e;
-    border-radius: 12px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    background-color: var(--dark-gray);
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow-large);
     margin-top: 20px;
     padding: 15px;
 }
 
 #generate-container h3 {
-    color: #ecf0f1;
+    color: var(--true-white);
     font-size: 1.3em;
     margin: 0 0 15px 0;
     padding-left: 10px;
@@ -849,8 +1151,8 @@ button:hover {
 }
 
 #generate-buttons {
-    background-color: #2c3e50;
-    border-radius: 8px;
+    background-color: var(--darker-gray);
+    border-radius: var(--border-radius-small);
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
@@ -858,29 +1160,24 @@ button:hover {
 }
 
 .generate-btn {
-    background-color: #4dabf7;
+    background-color: var(--primary-color);
     border: none;
-    color: white;
+    color: var(--true-white);
     cursor: pointer;
     flex: 1;
     font-size: 14px;
     min-width: 80px;
     padding: 10px 14px;
     transition: all 0.3s ease;
-    border-radius: 20px;
-}
-
-.generate-btn:hover {
-    background-color: #339af0;
-    transform: translateY(-2px);
+    border-radius: var(--border-radius-large);
 }
 
 /* Code Blocks */
-pre, .code-block {
+pre, .code-block, .code-block-container {
     background-color: #f4f4f4;
     border: 1px solid #ddd;
-    border-radius: 8px;
-    font-family: 'Fira Code', Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+    border-radius: var(--border-radius-small);
+    font-family: var(--font-code);
     font-size: 14px;
     line-height: 1.5;
     margin: 15px 0;
@@ -890,19 +1187,15 @@ pre, .code-block {
 }
 
 .code-block-container {
-    background-color: #f4f4f4;
-    border: 1px solid #ddd;
-    border-radius: 4px;
     margin: 10px 0;
 }
 
 .code-block-container pre {
     margin: 0;
-    padding: 10px;
-    padding-right: 40px;
+    padding: 10px 40px 10px 10px;
 }
 
-.code-block-container code {
+.code-block-container code, .code-block code {
     display: block;
     white-space: pre-wrap;
     word-wrap: break-word;
@@ -914,7 +1207,6 @@ pre, .code-block {
 }
 
 .code-block code {
-    display: block;
     padding-left: 4em;
 }
 
@@ -931,10 +1223,10 @@ pre, .code-block {
 }
 
 .copy-button {
-    background-color: #4dabf7;
+    background-color: var(--primary-color);
     border: none;
     border-radius: 4px;
-    color: white;
+    color: var(--true-white);
     cursor: pointer;
     font-size: 12px;
     padding: 6px 12px;
@@ -946,20 +1238,18 @@ pre, .code-block {
 }
 
 .copy-button:hover {
-    background-color: #339af0;
+    background-color: var(--primary-hover-color);
     opacity: 1;
 }
 
 /* Toggle Switch */
 .toggle-container {
+    display: flex;
     align-items: center;
     background-color: #f8f9fa;
-    border-radius: 12px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
-    display: flex;
-    justify-content: center;
-    margin-bottom: 20px;
-    padding: 15px;
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow-small);
+    padding: 10px 15px;
 }
 
 .toggle-switch {
@@ -976,7 +1266,7 @@ pre, .code-block {
 }
 
 .toggle-slider {
-    background: linear-gradient(to right, #ff7e5f, #feb47b);
+    background: var(--gradient-primary);
     border-radius: 34px;
     bottom: 0;
     cursor: pointer;
@@ -988,7 +1278,7 @@ pre, .code-block {
 }
 
 .toggle-slider:before {
-    background-color: white;
+    background-color: var(--true-white);
     border-radius: 50%;
     bottom: 3px;
     content: "";
@@ -1000,7 +1290,7 @@ pre, .code-block {
 }
 
 input:checked + .toggle-slider {
-    background: linear-gradient(to right, #74c0fc, #339af0);
+    background: var(--gradient-secondary);
 }
 
 input:checked + .toggle-slider:before {
@@ -1008,13 +1298,13 @@ input:checked + .toggle-slider:before {
 }
 
 .toggle-label {
-    color: #34495e;
+    color: var(--dark-gray);
     font-weight: 600;
     margin: 0 10px;
 }
 
 #mode-label {
-    color: #4dabf7;
+    color: var(--primary-color);
     font-weight: 600;
     margin-left: 10px;
 }
@@ -1031,9 +1321,9 @@ input:checked + .toggle-slider:before {
 }
 
 .file-upload-label {
-    background-color: #4dabf7;
+    background-color: var(--primary-color);
     border-radius: 30px;
-    color: white;
+    color: var(--true-white);
     cursor: pointer;
     display: inline-block;
     font-weight: 600;
@@ -1044,25 +1334,20 @@ input:checked + .toggle-slider:before {
     transition: all 0.3s ease;
 }
 
-.file-upload-label:hover {
-    background-color: #2c3e50;
-    transform: translateY(-2px);
-}
-
 #upload-button {
-    background-color: #9b59b6;
+    background-color: var(--tertiary-color);
     display: none;
 }
 
 #upload-button:hover {
-    background-color: #8e44ad;
+    background-color: var(--tertiary-hover-color);
 }
 
 /* File List */
 #uploaded-files-container, #files-to-add-container {
     background-color: #f9f9f9;
     border: 1px solid #e0e0e0;
-    border-radius: 8px;
+    border-radius: var(--border-radius-small);
     margin-top: 20px;
     padding: 15px;
 }
@@ -1096,21 +1381,21 @@ input:checked + .toggle-slider:before {
 }
 
 .remove-file, .remove-file-button, .remove-file-to-add {
-    background-color: #e74c3c;
+    background-color: var(--danger-color);
 }
 
 .add-file {
-    background-color: #4CAF50;
+    background-color: var(--success-color);
 }
 
 /* Question Button */
 #question-button {
-    background-color: #ff7e5f;
+    background-color: var(--secondary-color);
     margin-top: 20px;
 }
 
 #question-button:hover {
-    background-color: #e4532f;
+    background-color: var(--secondary-hover-color);
 }
 
 /* Loading Spinner */
@@ -1127,14 +1412,14 @@ input:checked + .toggle-slider:before {
     transform: translate(-50%, -50%);
     width: 100px;
     z-index: 9999;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    box-shadow: var(--shadow-large);
 }
 
 .spinner {
     animation: spin 1s linear infinite;
     border: 6px solid #f3f3f3;
     border-radius: 50%;
-    border-top: 6px solid #4dabf7;
+    border-top: 6px solid var(--primary-color);
     height: 60px;
     width: 60px;
 }
@@ -1161,104 +1446,292 @@ input:checked + .toggle-slider:before {
     border-left: 5px solid #5bc0de;
 }
 
-/* Dark mode styles */
-body.dark-mode {
-    background-color: #1e1e1e;
-    color: #f0f0f0;
-}
-
-body.dark-mode #chat-container {
-    background-color: #2d2d2d;
-    box-shadow: 0 1px 3px rgba(255,255,255,0.1), 0 1px 2px rgba(255,255,255,0.14);
-}
-
-body.dark-mode .user-message {
-    background-color: #1c7ed6;
-}
-
-body.dark-mode .bot-message {
-    background-color: #3a3a3a;
-    color: #f0f0f0;
-}
-
-body.dark-mode .bot-message::after {
-    background-color: #3a3a3a;
-}
-
-body.dark-mode .bot-message::before {
-    background: linear-gradient(to right, #ff7e5f, #feb47b);
-}
-
-body.dark-mode .bot-message.smart-response::before {
-    background: linear-gradient(to right, #74c0fc, #339af0);
-}
-
-body.dark-mode #user-input {
-    background-color: #2d2d2d;
-    color: #f0f0f0;
-    border-color: #444;
-}
-
-body.dark-mode button {
-    background-color: #4dabf7;
-    border-radius: 20px;
-}
-
-body.dark-mode button:hover {
-    background-color: #339af0;
-}
-
-body.dark-mode #generate-container {
-    background-color: #2d2d2d;
-}
-
-body.dark-mode #generate-container h3 {
-    color: #f0f0f0;
-}
-
-body.dark-mode #generate-buttons {
-    background-color: #1e1e1e;
-}
-
-body.dark-mode .generate-btn {
-    background-color: #4dabf7;
-}
-
-body.dark-mode .generate-btn:hover {
-    background-color: #339af0;
-}
-
-body.dark-mode pre, body.dark-mode .code-block {
-    background-color: #1e1e1e;
-    color: #d4d4d4;
-}
-
-body.dark-mode .code-block code::before {
-    color: #808080;
-    border-right-color: #404040;
-}
-
-body.dark-mode .toggle-container {
-    background-color: #2d2d2d;
-    box-shadow: 0 1px 3px rgba(255,255,255,0.1), 0 1px 2px rgba(255,255,255,0.14);
-}
-
-body.dark-mode .toggle-label {
-    color: #f0f0f0;
-}
-
-/* Update the existing styles for the toggle container */
-#mode-toggle-container {
+#context-control {
     display: flex;
-    justify-content: center;
+    align-items: center;
     gap: 20px;
-    margin-bottom: 20px;
+}
+
+#context-control > div, .context-toggle-container, .context-depth-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.context-depth-container {
+    opacity: 1;
+    transition: opacity 0.3s ease;
+}
+
+.context-depth-container.active {
+    opacity: 1;
+}
+
+#context-depth {
+    width: 60px;
+    padding: 5px;
+    border: 1px solid var(--primary-color);
+    border-radius: 4px;
+    font-size: 14px;
+    background-color: var(--chat-background);
+    color: var(--text-color);
+}
+
+#context-depth:disabled {
+    background-color: var(--light-gray);
+    color: var(--text-color);
+    opacity: 0.7;
+}
+
+.context-depth-label {
+    font-size: 14px;
+    color: var(--dark-gray);
+}
+
+#advanced-options {
+    background-color: var(--chat-header-background);
+    padding: 0 20px;
+    border-top: 1px solid var(--medium-gray);
+    transition: max-height 0.3s ease-out, opacity 0.3s ease-out, padding 0.3s ease-out;
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+#advanced-options.show {
+    max-height: 200px; /* Adjust this value as needed */
+    opacity: 1;
+    padding: 10px 20px;
+    pointer-events: auto;
+}
+
+#advanced-options h3 {
+    margin-top: 0;
+    color: var(--heading-color);
+    font-size: 1.2em;
+    margin-bottom: 15px;
+}
+
+#advanced-options h4 {
+    color: var(--heading-color);
+    font-size: 1.1em;
+    margin-top: 20px;
+    margin-bottom: 10px;
+}
+
+.option-group {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.option-group label {
+    margin-left: 10px;
+}
+
+.api-key-input {
+    margin-bottom: 15px;
+}
+
+.api-key-input label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 600;
+}
+
+.input-with-icon {
+    position: relative;
+}
+
+.input-with-icon input {
+    width: 90%;
+    padding: 10px;
+    padding-right: 35px;
+    border: 1px solid var(--medium-gray);
+    border-radius: var(--border-radius-small);
+    font-size: 14px;
+    transition: border-color 0.3s ease;
+}
+
+.input-with-icon input:focus {
+    border-color: var(--primary-color);
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.3);
+}
+
+.input-with-icon .toggle-password {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    cursor: pointer;
+    color: var(--dark-gray);
+}
+
+#save-api-keys {
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: var(--border-radius-small);
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+#save-api-keys:hover {
+    background-color: var(--primary-hover-color);
 }
 
 /* Highlight.js overrides */
 .hljs {
     background: transparent;
     padding: 0;
+}
+
+#mode-toggle-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 20px;
+    margin-bottom: 20px;
+    position: relative;
+    width: 100%;
+}
+
+#toggles-wrapper {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+}
+
+/* Dark mode styles */
+body.dark-mode {
+    --background-color: #1e1e1e;
+    --text-color: #f0f0f0;
+    --heading-color: #ffffff;
+    --light-gray: #3a3a3a;
+    --medium-gray: #2d2d2d;
+    --chat-background: var(--medium-gray);
+    --chat-header-background: var(--light-gray);
+    --chat-header-text: var(--true-white);
+    --chat-message-background: var(--light-gray);
+    --chat-message-text: var(--text-color);
+}
+
+body.dark-mode h1,
+body.dark-mode #chat-header h2,
+body.dark-mode #advanced-options h3,
+body.dark-mode #generate-container h3 {
+    color: var(--heading-color);
+}
+
+body.dark-mode #user-input {
+    background-color: var(--light-gray);
+    color: var(--text-color);
+    border-color: #444;
+}
+
+body.dark-mode button,
+body.dark-mode .generate-btn,
+body.dark-mode .file-upload-label {
+    background-color: var(--primary-color);
+    color: var(--true-white);
+}
+
+body.dark-mode button:hover,
+body.dark-mode .generate-btn:hover,
+body.dark-mode .file-upload-label:hover {
+    background-color: var(--primary-hover-color);
+}
+
+body.dark-mode #generate-container {
+    background-color: var(--medium-gray);
+}
+
+body.dark-mode #generate-buttons {
+    background-color: var(--dark-gray);
+}
+
+body.dark-mode pre,
+body.dark-mode .code-block,
+body.dark-mode .code-block-container {
+    background-color: var(--dark-gray);
+    color: #d4d4d4;
+    border-color: var(--light-gray);
+}
+
+body.dark-mode .code-block code::before {
+    color: #808080;
+    border-right-color: var(--light-gray);
+}
+
+body.dark-mode .toggle-container {
+    background-color: var(--medium-gray);
+    box-shadow: 0 1px 3px rgba(255, 255, 255, 0.1), 0 1px 2px rgba(255, 255, 255, 0.14);
+}
+
+body.dark-mode .toggle-label,
+body.dark-mode #upload-button,
+body.dark-mode .remove-file,
+body.dark-mode .remove-file-button,
+body.dark-mode .remove-file-to-add,
+body.dark-mode .add-file {
+    color: var(--true-white);
+}
+
+body.dark-mode #advanced-options {
+    border-top-color: var(--light-gray);
+}
+
+body.dark-mode .loading-spinner {
+    background-color: rgba(30, 30, 30, 0.9);
+}
+
+body.dark-mode .spinner {
+    border-color: #333;
+    border-top-color: var(--primary-color);
+}
+
+body.dark-mode #uploaded-files-container,
+body.dark-mode #files-to-add-container {
+    background-color: var(--medium-gray);
+    border-color: var(--light-gray);
+}
+
+body.dark-mode #file-list div,
+body.dark-mode #files-to-add-list li {
+    background-color: var(--dark-gray);
+    color: var(--text-color);
+}
+
+body.dark-mode .file-item.selected {
+    background-color: #2c3e50;
+    border-left-color: #3498db;
+}
+
+@media (max-width: var(--max-width)) {
+    #user-input {
+        width: calc(100% - 20px);
+    }
+
+    #send-button {
+        right: 20px;
+    }
+}
+
+/* Adjust other sections to fit within the main content area */
+#mode-toggle-container,
+#generate-container,
+#question-button,
+.file-upload-label,
+#file-upload-section,
+#uploaded-files-container,
+#files-to-add-container {
+    max-width: calc(var(--max-width) - 40px);
+    margin-left: auto;
+    margin-right: auto;
+    width: 100%;
 }
 ```
 
@@ -1348,6 +1821,10 @@ const bodyParser = require('body-parser');
 const axios = require('axios');
 
 const app = express();
+
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
 const port = 3003;
 
 app.use(bodyParser.json());
@@ -1357,21 +1834,31 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
 app.post('/generate', async (req, res) => {
-    const { model, prompt } = req.body;
+    const { model, prompt, openaiApiKey, anthropicApiKey } = req.body;
 
-    console.log('Received request:', { model, prompt });
+    console.log('Received request for model:', model);
+
+    // Function to mask the API key
+    const maskApiKey = (key) => {
+        if (!key) return 'Not provided';
+        return key.slice(0, 4) + '...' + key.slice(-4);
+    };
 
     try {
         let response;
         if (model === 'gpt-4o-mini') {
             console.log('Calling OpenAI API');
+            const usedKey = openaiApiKey || OPENAI_API_KEY;
+            console.log('Using OpenAI API Key:', maskApiKey(usedKey));
+            console.log('Key source:', openaiApiKey ? 'Custom' : 'Environment');
+            
             response = await axios.post('https://api.openai.com/v1/chat/completions', {
                 model: 'gpt-4o-mini',
                 messages: [{ role: 'user', content: prompt }],
                 temperature: 0.7
             }, {
                 headers: {
-                    'Authorization': `Bearer ${OPENAI_API_KEY}`,
+                    'Authorization': `Bearer ${usedKey}`,
                     'Content-Type': 'application/json'
                 }
             });
@@ -1379,6 +1866,10 @@ app.post('/generate', async (req, res) => {
             return res.json({ content: response.data.choices[0].message.content });
         } else if (model === 'claude-3-5-sonnet') {
             console.log('Calling Anthropic API');
+            const usedKey = anthropicApiKey || ANTHROPIC_API_KEY;
+            console.log('Using Anthropic API Key:', maskApiKey(usedKey));
+            console.log('Key source:', anthropicApiKey ? 'Custom' : 'Environment');
+            
             response = await axios.post('https://api.anthropic.com/v1/messages', {
                 model: "claude-3-5-sonnet-20240620",
                 max_tokens: 8192,
@@ -1396,7 +1887,7 @@ app.post('/generate', async (req, res) => {
                 ]
             }, {
                 headers: {
-                    'x-api-key': ANTHROPIC_API_KEY,
+                    'x-api-key': usedKey,
                     'anthropic-version': '2023-06-01',
                     'anthropic-beta': 'max-tokens-3-5-sonnet-2024-07-15',
                     'Content-Type': 'application/json'

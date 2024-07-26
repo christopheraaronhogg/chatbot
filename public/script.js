@@ -13,6 +13,13 @@ const uploadButton = document.getElementById('upload-button');
 const uploadedFilesContainer = document.getElementById('uploaded-files-container');
 const fileList = document.getElementById('file-list');
 const loadingSpinner = document.getElementById('loading-spinner');
+const limitContextCheckbox = document.getElementById('limit-context-checkbox');
+const contextDepthInput = document.getElementById('context-depth');
+const openaiApiKeyInput = document.getElementById('openai-api-key');
+const anthropicApiKeyInput = document.getElementById('anthropic-api-key');
+const saveApiKeysButton = document.getElementById('save-api-keys');
+const advancedOptionsToggle = document.getElementById('advanced-options-toggle');
+const advancedOptions = document.getElementById('advanced-options');
 
 let conversation = [];
 let currentHtml = '';
@@ -22,6 +29,125 @@ let currentReadme = '';
 let projectContext = '';
 let uploadedFiles = [];
 let selectedFiles = [];
+let limitContext = false;
+let contextDepth = 5;
+let customOpenAIKey = '';
+let customAnthropicKey = '';
+
+saveApiKeysButton.addEventListener('click', () => {
+    customOpenAIKey = openaiApiKeyInput.value.trim();
+    customAnthropicKey = anthropicApiKeyInput.value.trim();
+    
+    if (customOpenAIKey || customAnthropicKey) {
+        localStorage.setItem('customOpenAIKey', customOpenAIKey);
+        localStorage.setItem('customAnthropicKey', customAnthropicKey);
+        alert('API keys saved successfully!');
+    } else {
+        alert('Please enter at least one API key.');
+    }
+});
+
+// Load saved API keys on page load
+document.addEventListener('DOMContentLoaded', () => {
+    const savedOpenAIKey = localStorage.getItem('customOpenAIKey');
+    const savedAnthropicKey = localStorage.getItem('customAnthropicKey');
+    
+    if (savedOpenAIKey) openaiApiKeyInput.value = savedOpenAIKey;
+    if (savedAnthropicKey) anthropicApiKeyInput.value = savedAnthropicKey;
+    
+    customOpenAIKey = savedOpenAIKey || '';
+    customAnthropicKey = savedAnthropicKey || '';
+});
+
+function autoResize() {
+    // Store the current cursor position and scroll position
+    const cursorPosition = this.selectionStart;
+    const scrollTop = this.scrollTop;
+    const viewportHeight = this.clientHeight;
+    const wasAtBottom = (this.scrollHeight - this.scrollTop === viewportHeight);
+
+    // Temporarily shrink the textarea to get the correct scrollHeight
+    this.style.height = '0px';
+    
+    // Get the scrollHeight and add a small buffer
+    const scrollHeight = this.scrollHeight + 2;
+    
+    // Set the new height, capped at 150px
+    const newHeight = Math.min(scrollHeight, 150);
+    this.style.height = newHeight + 'px';
+
+    // Force a minimum height of two lines
+    const lineHeight = parseInt(window.getComputedStyle(this).lineHeight);
+    const minHeight = lineHeight * 2;
+    if (newHeight < minHeight) {
+        this.style.height = minHeight + 'px';
+    }
+
+    // Show scrollbar only if content exceeds max height
+    this.style.overflowY = scrollHeight > 150 ? 'scroll' : 'hidden';
+
+    // Restore the cursor position
+    this.setSelectionRange(cursorPosition, cursorPosition);
+
+    // Scroll handling
+    if (wasAtBottom || cursorPosition === this.value.length) {
+        // If we were at the bottom before resizing or the cursor is at the end,
+        // scroll to the bottom
+        this.scrollTop = this.scrollHeight;
+    } else {
+        // Calculate if the cursor is now out of view
+        const cursorY = this.scrollHeight - this.scrollTop - viewportHeight;
+        
+        if (cursorY > 0 && cursorY < lineHeight) {
+            // If the cursor is just out of view, scroll to make it visible
+            this.scrollTop = this.scrollHeight - viewportHeight;
+        } else {
+            // Otherwise, maintain the previous scroll position
+            this.scrollTop = scrollTop;
+        }
+    }
+}
+
+
+
+
+
+
+document.querySelectorAll('.toggle-password').forEach(icon => {
+    icon.addEventListener('click', () => {
+        const input = icon.previousElementSibling;
+        if (input.type === 'password') {
+            input.type = 'text';
+            icon.classList.replace('fa-eye', 'fa-eye-slash');
+        } else {
+            input.type = 'password';
+            icon.classList.replace('fa-eye-slash', 'fa-eye');
+        }
+    });
+});
+
+advancedOptionsToggle.addEventListener('click', () => {
+    if (advancedOptions.classList.contains('show')) {
+        // Closing the options
+        advancedOptions.style.maxHeight = advancedOptions.scrollHeight + 'px';
+        advancedOptions.offsetHeight; // Force reflow
+        advancedOptions.style.maxHeight = '0px';
+        advancedOptions.classList.remove('show');
+    } else {
+        // Opening the options
+        advancedOptions.classList.add('show');
+        advancedOptions.style.maxHeight = advancedOptions.scrollHeight + 'px';
+    }
+});
+
+// Listen for the end of the transition
+advancedOptions.addEventListener('transitionend', (e) => {
+    if (e.propertyName === 'max-height') {
+        if (!advancedOptions.classList.contains('show')) {
+            advancedOptions.style.maxHeight = null;
+        }
+    }
+});
 
 function cleanCodeBlock(code, language) {
     console.log("Cleaning code block:", code); // Debug log
@@ -173,15 +299,6 @@ function handleCopyClick(e) {
     });
 }
 
-function escapeHtml(unsafe) {
-    return unsafe
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-}
-
 function getCurrentModel() {
     return modeToggle.checked ? 'claude-3-5-sonnet' : 'gpt-4o-mini';
 }
@@ -194,7 +311,12 @@ async function generateContent(prompt) {
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ model, prompt }),
+            body: JSON.stringify({ 
+                model, 
+                prompt,
+                openaiApiKey: customOpenAIKey,
+                anthropicApiKey: customAnthropicKey
+            }),
         });
         const data = await response.json();
         console.log('API Response:', data);
@@ -217,9 +339,20 @@ async function handleSend() {
     const userMessage = userInput.value.trim();
     if (userMessage) {
         addMessage(userMessage, true);
-        userInput.value = '';
+        resetInputBox(); // Reset the input box after sending
         loadingSpinner.style.display = 'flex';
-        let prompt = `${projectContext}\n\nHuman: ${userMessage}\n\nSelected Files: ${selectedFiles.join(', ')}\n\nAssistant: Please provide your response. If you include any code snippets, always wrap them in triple backticks (\`\`\`) for proper formatting.`;
+
+        let contextString;
+        if (limitContext) {
+            // Get the last N back-and-forth messages based on contextDepth
+            const recentContext = conversation.slice(-contextDepth * 2);
+            contextString = recentContext.map(msg => `${msg.role}: ${msg.content}`).join('\n');
+        } else {
+            // Use the entire conversation
+            contextString = conversation.map(msg => `${msg.role}: ${msg.content}`).join('\n');
+        }
+
+        let prompt = `${contextString}\n\nHuman: ${userMessage}\n\nSelected Files: ${selectedFiles.join(', ')}\n\nAssistant: Please provide your response. If you include any code snippets, always wrap them in triple backticks (\`\`\`) for proper formatting.`;
 
         try {
             const response = await generateContent(prompt);
@@ -363,7 +496,7 @@ User input:
 ${userMessage}
 Implementation advice:`;
 
-    loadingSpinner.style.display = 'flex';
+loadingSpinner.style.display = 'flex';
     try {
         const advice = await generateContent(prompt);
         addMessage("Implementation Advice:");
@@ -397,7 +530,7 @@ function handleFileUpload(files) {
                 </div>
             `;
 
-            // ... rest of the function remains the same
+            fileList.appendChild(fileElement);
 
             if (i === files.length - 1) {
                 uploadedFilesContainer.style.display = 'block';
@@ -447,11 +580,35 @@ readmeButton.addEventListener('click', handleReadme);
 questionButton.addEventListener('click', handleQuestion);
 implementationButton.addEventListener('click', handleImplementationAdvice);
 
-userInput.addEventListener('keypress', (e) => {
+// Attach event listeners to the input
+userInput.addEventListener('input', autoResize);
+userInput.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') {
-        handleSend();
+        if (e.shiftKey) {
+            // Shift+Enter: add a line break
+            e.preventDefault();
+            const cursorPosition = this.selectionStart;
+            const currentValue = this.value;
+            this.value = currentValue.slice(0, cursorPosition) + '\n' + currentValue.slice(cursorPosition);
+            this.selectionStart = this.selectionEnd = cursorPosition + 1;
+            autoResize.call(this);
+        } else {
+            // Enter without Shift: send the message
+            e.preventDefault();
+            handleSend();
+        }
     }
 });
+
+function resetInputBox() {
+    userInput.value = '';
+    userInput.style.height = 'auto';
+    const lineHeight = parseInt(window.getComputedStyle(userInput).lineHeight);
+    const minHeight = lineHeight * 2;
+    userInput.style.height = minHeight + 'px';
+    userInput.style.overflowY = 'hidden';
+}
+
 
 modeToggle.addEventListener('change', () => {
     const mode = modeToggle.checked ? 'Smart' : 'Quick';
@@ -469,6 +626,17 @@ document.getElementById('file-upload').addEventListener('change', function(event
     }
 });
 
+limitContextCheckbox.addEventListener('change', function() {
+    limitContext = this.checked;
+    contextDepthInput.disabled = !limitContext;
+    console.log(`Context limiting ${limitContext ? 'enabled' : 'disabled'}`);
+});
+
+contextDepthInput.addEventListener('change', function() {
+    contextDepth = parseInt(this.value);
+    console.log(`Context depth set to ${contextDepth}`);
+});
+
 // Initialize the chat
 addMessage("Hello! I'm here to help you with your project. What would you like to do?");
 
@@ -480,4 +648,10 @@ document.addEventListener('DOMContentLoaded', (event) => {
     document.querySelectorAll('pre code').forEach((block) => {
         hljs.highlightElement(block);
     });
+});
+
+toggleAdvancedOptionsBtn.addEventListener('click', () => {
+    const isHidden = advancedOptionsContent.style.display === 'none';
+    advancedOptionsContent.style.display = isHidden ? 'block' : 'none';
+    toggleAdvancedOptionsBtn.textContent = isHidden ? 'Hide Advanced Options' : 'Show Advanced Options';
 });
