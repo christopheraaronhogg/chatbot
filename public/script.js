@@ -350,7 +350,8 @@ async function addMessage(content, isUser = false) {
         button.addEventListener("click", function () {
             const previewUrl = this.getAttribute("data-preview-url");
             if (previewUrl) {
-                window.open(previewUrl, "_blank");
+                // Open in a new window instead of a new tab
+                window.open(previewUrl, "_blank", "width=800,height=600,menubar=no,toolbar=no,location=no,status=no");
             } else {
                 const codeBlock = this.closest(
                     ".code-block-container",
@@ -364,7 +365,7 @@ async function addMessage(content, isUser = false) {
     messageDiv.querySelectorAll(".download-button").forEach((button) => {
         button.addEventListener("click", function () {
             const codeBlock = this.closest(
-                ".code-block-container",
+                ".code-block-container"
             ).querySelector("code");
             const htmlContent = codeBlock.textContent;
             downloadHtmlFile(htmlContent);
@@ -503,13 +504,15 @@ async function handleSend() {
 
         // Add selected file contents to the prompt if the send code toggle is checked
         if (sendCodeToggle.checked) {
-            const selectedFiles = Array.from(fileCheckboxes.querySelectorAll('input:checked'))
-                .map(checkbox => files[parseInt(checkbox.id.split('-')[1])]);
+            const selectedFiles = getSelectedFiles();
 
             if (selectedFiles.length > 0) {
                 prompt += "Selected Files:\n";
-                selectedFiles.forEach(file => {
-                    prompt += `File: ${file.name}\nContent:\n\`\`\`${file.language}\n${file.content}\n\`\`\`\n\n`;
+                selectedFiles.forEach(filePath => {
+                    const file = findFileByPath(filePath);
+                    if (file) {
+                        prompt += `File: ${filePath}\nContent:\n\`\`\`${file.language}\n${file.content}\n\`\`\`\n\n`;
+                    }
                 });
             }
         }
@@ -795,6 +798,99 @@ function initMonacoEditor() {
     });
 }
 
+function downloadHtmlFile(htmlContent) {
+    const blob = new Blob([htmlContent], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'index.html';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+// Add this function near the other preview-related functions
+function createPreviewWindow(htmlContent) {
+    const previewWindow = window.open("", "_blank", "width=800,height=600,menubar=no,toolbar=no,location=no,status=no");
+    previewWindow.document.write(htmlContent);
+    previewWindow.document.close();
+}
+
+function updateFileSelection() {
+    const fileTreeSelection = document.getElementById('file-tree-selection');
+    fileTreeSelection.innerHTML = '';
+
+    function createSelectionNode(item, path = '') {
+        const li = document.createElement('li');
+        li.className = item.type;
+
+        const label = document.createElement('label');
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.value = `${path}/${item.name}`;
+
+        label.appendChild(checkbox);
+        const span = document.createElement('span');
+        span.textContent = item.name;
+        label.appendChild(span);
+        li.appendChild(label);
+
+        if (item.type === 'folder') {
+            const ul = document.createElement('ul');
+            item.children.forEach(child => {
+                const childNode = createSelectionNode(child, `${path}/${item.name}`);
+                ul.appendChild(childNode);
+            });
+            li.appendChild(ul);
+
+            span.addEventListener('click', (e) => {
+                e.preventDefault();
+                ul.style.display = ul.style.display === 'none' ? 'block' : 'none';
+            });
+
+            checkbox.addEventListener('change', () => {
+                const childCheckboxes = ul.querySelectorAll('input[type="checkbox"]');
+                childCheckboxes.forEach(childBox => {
+                    childBox.checked = checkbox.checked;
+                });
+            });
+        }
+
+        return li;
+    }
+
+    const rootUl = document.createElement('ul');
+    files[0].children.forEach(child => {
+        rootUl.appendChild(createSelectionNode(child, '/root'));
+    });
+
+    fileTreeSelection.appendChild(rootUl);
+}
+
+// Update the getSelectedFiles function
+function getSelectedFiles() {
+    const checkboxes = document.querySelectorAll('#file-tree-selection input[type="checkbox"]:checked');
+    return Array.from(checkboxes).map(checkbox => checkbox.value);
+}
+
+// Existing findFileByPath function
+function findFileByPath(path) {
+    const pathParts = path.split('/').filter(part => part !== '' && part !== 'root');
+    let currentItem = files[0];
+
+    for (const part of pathParts) {
+        if (currentItem.type === 'folder') {
+            currentItem = currentItem.children.find(child => child.name === part);
+            if (!currentItem) return null;
+        } else {
+            return currentItem;
+        }
+    }
+
+    return currentItem.type === 'file' ? currentItem : null;
+}
+
 sendButton.addEventListener("click", handleSend);
 htmlButton.addEventListener("click", handleHtml);
 cssButton.addEventListener("click", handleCss);
@@ -908,6 +1004,9 @@ sendCodeToggle.addEventListener('change', () => {
   fileSelection.style.display = sendCodeToggle.checked ? 'block' : 'none';
   // Adjust the chat container's bottom margin to make room for the file selection
   chatContainer.style.marginBottom = sendCodeToggle.checked ? '200px' : '100px';
+  if (sendCodeToggle.checked) {
+    updateFileSelection();
+  }
 });
 
 // Update the handleSend function
@@ -938,13 +1037,14 @@ async function handleSend() {
 
     // Add selected file contents to the prompt if the send code toggle is checked
     if (sendCodeToggle.checked) {
-      const selectedFiles = Array.from(fileCheckboxes.querySelectorAll('input:checked'))
-        .map(checkbox => files[parseInt(checkbox.id.split('-')[1])]);
-
+      const selectedFiles = getSelectedFiles();
       if (selectedFiles.length > 0) {
         prompt += "Selected Files:\n";
-        selectedFiles.forEach(file => {
-          prompt += `File: ${file.name}\nContent:\n\`\`\`${file.language}\n${file.content}\n\`\`\`\n\n`;
+        selectedFiles.forEach(filePath => {
+          const file = findFileByPath(filePath);
+          if (file) {
+            prompt += `File: ${filePath}\nContent:\n\`\`\`${file.language}\n${file.content}\n\`\`\`\n\n`;
+          }
         });
       }
     }
